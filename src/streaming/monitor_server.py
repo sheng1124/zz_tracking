@@ -3,6 +3,7 @@ import numpy as np
 import socket
 import struct
 import time
+import os
 
 class Monitor_Server():
 	def __init__(self, ip, port): #127.0.0.1 , 9987
@@ -52,7 +53,7 @@ class Monitor_Server():
 		self.buffer = self.buffer[img_size:]
 		self.recv_img_total_time += time.perf_counter() - s
 		self.img_count += 1
-		print("avg_time=", self.__count_recv_speed())
+		#print("avg_time=", self.__count_recv_speed())
 		
 		return encode_img
 	
@@ -66,6 +67,13 @@ class Monitor_Server():
 		img = self.__img_decode(encode_img)
 		#顯示影像
 		self.__show_img(img)
+		#儲存影像
+		name = time.time()
+		savepath = os.path.join("../data/test", "{}.jpg".format(name))
+		cv2.imwrite(savepath, img)
+		#跑辨識
+		#結果插入資料庫
+		
 	
 	#計算fps
 	def get_fps(self):
@@ -82,8 +90,8 @@ class Monitor_Server():
 			#計算fps
 			fps = self.get_fps()
 			#顯示fps
-			img = draw_fps(img, fps)
-			cv2.imshow("live", img)
+			img2 = draw_fps(img, fps)
+			cv2.imshow("live", img2)
 			cv2.waitKey(1)
 			
 	#等待客戶端連線
@@ -104,7 +112,7 @@ class Monitor_Server():
 	def __img_decode(self, encode_data):
 		data = np.frombuffer(encode_data, dtype = "uint8")
 		img = cv2.imdecode(data, cv2.IMREAD_COLOR)
-		print("decode len=", len(img.tobytes()))
+		#print("decode len=", len(img.tobytes()))
 		return img
 	
 	#伺服器開始監聽
