@@ -84,12 +84,11 @@ class Monitor_Client():
 
 
 if __name__ == '__main__':
-    cam = Camera((1280, 720), 15) #640 480
+    cam = Camera((640, 480), 15) #640 480
     #x = cam.get_encode_image()
     #cam.img_decode(x)
 
-
-    ms = Monitor_Client("4.tcp.ngrok.io", 17114)#"192.168.2.5", 9987)163.25.103.111
+    ms = Monitor_Client("192.168.1.150", 9987)#"192.168.2.5", 9987)163.25.103.111 "6.tcp.ngrok.io", 16690
     ms.connect()
     #ms.send_stream_once(cam)
     ms.send_stream(cam)
