@@ -58,13 +58,36 @@ class Connect_handler(threading.Thread):
         return True
     
     def video_sorce_hand(self):
+        return True
         if not "video_request" in self.connect_list:
+            buffer = b""
+            
             #解析長度
-            packed_img_size = self.conn.recv(self.payload_size)
+            while len(buffer) < self.payload_size:
+                buffer += self.conn.recv(self.recv_size)
+            packed_img_size = buffer[:self.payload_size]
             img_size = struct.unpack(self.payload, packed_img_size)[0]
-            #接收壓縮影像
-            packed_img = source_conn.recv(img_size)
-            #不用解碼
+            #移除buffer中擷取過的影像長度資訊
+            buffer = buffer[self.payload_size:]
+            
+            print(img_size)
+            
+            #接收body
+            while len(buffer) < img_size:
+                buffer += self.conn.recv(img_size - len(buffer))
+                #buffer += conn.recv(self.recv_size)
+            #擷取、解析壓縮影像資訊
+            packed_img = buffer[:img_size]
+            #移除buffer中擷取過的影像資訊
+            buffer = buffer[img_size:]
+            #print(len(buffer))
+
+            #不用解碼"""
+            data = np.frombuffer(packed_img, dtype = "uint8")
+            img = cv2.imdecode(data, cv2.IMREAD_COLOR)
+            cv2.imshow("live", img)
+            cv2.waitKey(1)
+            
         return True
     
     #設置影像解碼參數
@@ -87,15 +110,31 @@ class Connect_handler(threading.Thread):
         buffer = b""
         
         #接收長度資訊
-        packed_img_size = source_conn.recv(self.payload_size)
+        while len(buffer) < self.payload_size:
+            buffer += source_conn.recv(self.recv_size)
+        packed_img_size = buffer[:self.payload_size]
         img_size = struct.unpack(self.payload, packed_img_size)[0]
-        print("compressed image size:", img_size)
+        #移除buffer中擷取過的影像長度資訊
+        buffer = buffer[self.payload_size:]
+        print(img_size)
+        
+        """packed_img_size = source_conn.recv(self.payload_size)
+        img_size = struct.unpack(self.payload, packed_img_size)[0]
+        print("compressed image size:", img_size)"""
         
         #接收壓縮影像
-        packed_img = source_conn.recv(img_size)
+        #packed_img = source_conn.recv(img_size)
+        while len(buffer) < img_size:
+            buffer += source_conn.recv(img_size - len(buffer))
+        #擷取、解析壓縮影像資訊
+        packed_img = buffer[:img_size]
+        #移除buffer中擷取過的影像資訊
+        buffer = buffer[img_size:]
+        
         
         #傳送長度資訊+壓縮影像給requester
         self.conn.sendall(packed_img_size + packed_img)
+        return True
 
     #傳送訊息給遠端要求者
     def msg_request_hand(self):
