@@ -10,9 +10,9 @@ import threading
 class Connect_handler(threading.Thread):
     def __init__(self, client_conn, client_addr, connect_list):
         threading.Thread.__init__(self)
-        self.conn = client_conn
-        self.addr = client_addr
+        (self.conn, self.addr) = (client_conn, client_addr)
         self.connect_list = connect_list
+        self.set_video_decode_para()
     
     def run(self):
         print ("handle Connection from : ", self.addr)
@@ -31,28 +31,76 @@ class Connect_handler(threading.Thread):
         #連線開始 先接受驗證訊息
         print("identify connection")
         data = self.conn.recv(2048)
+        
         #訊息解碼確認身分
         identify = data.decode()
         print("identification: ", identify)
-        if identify == "msg_source":
-            self.connect_list["msg_source"] = [self.conn, self.addr]
-            return self.msg_soucre_hand
-        elif identify == "msg_request":
-            self.connect_list["msg_request"] = [self.conn, self.addr]
-            return self.msg_request_hand
+
+        #驗證身分
+        identify_dict = {
+            "msg_source" : self.msg_soucre_hand,
+            "msg_request" : self.msg_request_hand,
+            "video_source" : self.video_sorce_hand,
+            "video_request" : self.video_request_hand
+        }
+        
+        if identify in identify_dict:
+            #合格的身分
+            self.connect_list[identify] = [self.conn, self.addr]
+            return identify_dict[identify]
         else:
             return False
-    
+
     #保持 source 連線
     def msg_soucre_hand(self):
         if not "msg_request" in self.connect_list:
             data = self.conn.recv(2048)
         return True
     
+    def video_sorce_hand(self):
+        if not "video_request" in self.connect_list:
+            #解析長度
+            packed_img_size = self.conn.recv(self.payload_size)
+            img_size = struct.unpack(self.payload, packed_img_size)[0]
+            #接收壓縮影像
+            packed_img = source_conn.recv(img_size)
+            #不用解碼
+        return True
+    
+    #設置影像解碼參數
+    def set_video_decode_para(self):
+        self.payload = ">L"
+        self.payload_size = struct.calcsize(self.payload)
+        self.recv_size = 4096
+    
+    def video_request_hand(self):
+        if not "video_source" in self.connect_list:
+            #沒有來源
+            print("requester no video source")
+            del self.connect_list["video_request"]
+            return False
+            
+        #選擇來源
+        source = self.connect_list["video_source"]
+        source_conn = source[0]
+        print("available video source for requester, from", source[1])
+        buffer = b""
+        
+        #接收長度資訊
+        packed_img_size = source_conn.recv(self.payload_size)
+        img_size = struct.unpack(self.payload, packed_img_size)[0]
+        print("compressed image size:", img_size)
+        
+        #接收壓縮影像
+        packed_img = source_conn.recv(img_size)
+        
+        #傳送長度資訊+壓縮影像給requester
+        self.conn.sendall(packed_img_size + packed_img)
+
     #傳送訊息給遠端要求者
     def msg_request_hand(self):
         #選擇來源
-        if "msg_source" in self.connect_list and len(self.connect_list["msg_source"])>0:
+        if "msg_source" in self.connect_list:
             source = self.connect_list["msg_source"]
             source_conn = source[0]
             print("available source", source[1])
@@ -73,22 +121,6 @@ class Connect_handler(threading.Thread):
             data = bytes("no source conn\n", 'UTF-8')
             self.conn.sendall(data)
             del self.connect_list["msg_request"]
-            return False
-    
-    
-    #選擇處裡連線的方式
-    def select_handler(self):
-        data = self.conn.recv(2048)
-        identify = data.decode()
-        print("identify source: ", identify)
-        if identify == "msg_sender":
-            #連線成立
-            self.connect_list["msg_sender"] = [self.conn, self.addr]
-            return self.input_msg
-        elif identify == "msg_receiver":
-            self.connect_list["msg_receiver"] = [self.conn, self.addr]
-            return self.receive_msg
-        else:
             return False
     
 #伺服器
