@@ -1,9 +1,10 @@
 import cv2
+import numpy as np
 import socket
 import struct
-import numpy as np
 import time
 import os
+import threading
 
 #伺服器處理連線
 class Connect_handler(threading.Thread):
@@ -22,6 +23,10 @@ class Connect_handler(threading.Thread):
         while connecter:
             if not connecter():
                 break
+        self.close_conn()
+        
+    #關閉連線
+    def close_conn(self):
         self.conn.close()
         print("Client at ", self.addr , " disconnected...")
         print(self.connect_list)
@@ -60,15 +65,28 @@ class Connect_handler(threading.Thread):
     def __img_len_decode(self, conn):
         buffer = b""
         while len(buffer) < self.payload_size:
-            buffer += conn.recv(self.recv_size)
+            data = conn.recv(self.recv_size)
+            if data:
+                buffer += data
+            else:
+                print("no data from video_source")
+                self.close_conn()
+                raise ValueError
         packed_img_size = buffer[:self.payload_size]
         img_size = struct.unpack(self.payload, packed_img_size)[0]
+        buffer = buffer[self.payload_size:]
         return img_size, buffer
     
     #接收壓縮資料
     def __get_packed_img(self, conn, img_size, buffer):
         while len(buffer) < img_size:
-            buffer += conn.recv(img_size - len(buffer))
+            data = conn.recv(img_size - len(buffer))
+            if data:
+                buffer += data
+            else:
+                print("no data from video_source")
+                self.close_conn()
+                raise ValueError
         #擷取、解析壓縮影像資訊
         packed_img = buffer[:img_size]
         #移除buffer中擷取過的影像資訊
@@ -80,18 +98,27 @@ class Connect_handler(threading.Thread):
     def __show_packed_img(self, packed_img):
         data = np.frombuffer(packed_img, dtype = "uint8")
         img = cv2.imdecode(data, cv2.IMREAD_COLOR)
-        cv2.imshow("live", img)
+        cv2.imshow(self.windowname, img)
         cv2.waitKey(1)
+    
+    #設定video資源不公開 重設顯示視窗
+    def __set_public_false(self):
+        if len(self.connect_list["video_source"]) < 3:
+            #初始狀態
+            self.connect_list["video_source"].append(False)
+            self.public = self.connect_list["video_source"][2]
+            self.windowname = str(time.perf_counter())
+        elif self.public:
+            #可能是 video_request 離開需要改回不公開
+            self.public = False
+            self.windowname = str(time.perf_counter())
     
     #影像來源管理
     def video_sorce_hand(self):
-        if len(self.connect_list["video_source"]) < 3:
+        if not "video_request" in self.connect_list or len(self.connect_list["video_source"]) < 3:
             #設定資源不公開
-            self.connect_list["video_source"][2] = False
-            self.public = self.connect_list["video_source"][2]
-        if not "video_request" in self.connect_list:
-            #設定資源不公開
-            self.public = False
+            self.__set_public_false()
+                
             #解析影像長度
             (img_size, buffer) = self.__img_len_decode(self.conn)
             print(img_size)
