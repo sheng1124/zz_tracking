@@ -75,7 +75,7 @@ class Connect_handler(threading.Thread):
         packed_img_size = buffer[:self.payload_size]
         img_size = struct.unpack(self.payload, packed_img_size)[0]
         buffer = buffer[self.payload_size:]
-        return img_size, buffer
+        return img_size, buffer, packed_img_size
     
     #接收壓縮資料
     def __get_packed_img(self, conn, img_size, buffer):
@@ -120,8 +120,7 @@ class Connect_handler(threading.Thread):
             self.__set_public_false()
                 
             #解析影像長度
-            (img_size, buffer) = self.__img_len_decode(self.conn)
-            print(img_size)
+            (img_size, buffer, *_) = self.__img_len_decode(self.conn)
             
             #接收壓縮資料
             (packed_img, buffer) = self.__get_packed_img(self.conn, img_size, buffer)
@@ -147,30 +146,18 @@ class Connect_handler(threading.Thread):
             print("requester no video source")
             del self.connect_list["video_request"]
             return False
-            
+        
         #選擇來源
         source = self.connect_list["video_source"]
         source_conn = source[0]
         print("available video source for requester, from", source[1])
-        buffer = b""
         
-        #接收長度資訊
-        while len(buffer) < self.payload_size:
-            buffer += source_conn.recv(self.recv_size)
-        packed_img_size = buffer[:self.payload_size]
-        img_size = struct.unpack(self.payload, packed_img_size)[0]
-        #移除buffer中擷取過的影像長度資訊
-        buffer = buffer[self.payload_size:]
-        print(img_size)
+        #解析影像長度
+        (img_size, buffer, packed_img_size) = self.__img_len_decode(source_conn)
+        
+        #接收壓縮資料
+        (packed_img, buffer) = self.__get_packed_img(source_conn, img_size, buffer)
 
-        #接收壓縮影像
-        while len(buffer) < img_size:
-            buffer += source_conn.recv(img_size - len(buffer))
-        #擷取、解析壓縮影像資訊
-        packed_img = buffer[:img_size]
-        #移除buffer中擷取過的影像資訊
-        buffer = buffer[img_size:]
-        
         #傳送長度資訊+壓縮影像給requester
         self.conn.sendall(packed_img_size + packed_img)
         return True
