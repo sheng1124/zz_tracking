@@ -47,7 +47,8 @@ class Monitor_Client():
     #連線到遠端伺服器
     def connect(self):
         self.remote_server.connect((self.remote_ip, self.remote_port))
-        self.send_data(b"video_source")
+        self.send_data(bytes("video_source", "UTF-8"))
+        self.remote_server.recv(1)
         print("connect to ", self.remote_ip, self.remote_port)
 
     #傳輸資料
@@ -85,7 +86,7 @@ class Monitor_Client():
 
 
 if __name__ == '__main__':
-    cam = Camera((640, 480), 15) #640 480
+    cam = Camera((640, 480), 15)#"rtsp://admin:ppcb1234@192.168.154.15:554/unicast/c7/s1/live") #640 480
     #x = cam.get_encode_image()
     #cam.img_decode(x)
 
