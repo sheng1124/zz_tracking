@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import cv2
 import numpy as np
 import socket
@@ -5,188 +6,49 @@ import struct
 import time
 import os
 import threading
+import multiprocessing as mp
+
 
 #伺服器處理連線
 class Connect_handler(threading.Thread):
-    def __init__(self, client_conn, client_addr, connect_list):
-        threading.Thread.__init__(self)
-        (self.conn, self.addr) = (client_conn, client_addr)
-        self.connect_list = connect_list
-        self.set_video_decode_para()
-    
-    def run(self):
-        print ("handle Connection from : ", self.addr)
-        #識別連線者
-        connecter = self.conn_identify()
-        if connecter:
-            print(self.connect_list)
-        while connecter:
-            if not connecter():
-                break
-        self.close_conn()
-        
-    #關閉連線
-    def close_conn(self):
-        self.conn.close()
-        print("Client at ", self.addr , " disconnected...")
-        print(self.connect_list)
-    
-    def conn_identify(self):
-        #連線開始 先接受驗證訊息
-        print("identify connection")
-        data = self.conn.recv(2048)
-        
-        #訊息解碼確認身分
-        identify = data.decode()
-        print("identification: ", identify)
 
-        #驗證身分
-        identify_dict = {
-            "msg_source" : self.msg_soucre_hand,
-            "msg_request" : self.msg_request_hand,
-            "video_source" : self.video_sorce_hand,
-            "video_request" : self.video_request_hand
-        }
-        
-        if identify in identify_dict:
-            #合格的身分
-            self.connect_list[identify] = [self.conn, self.addr]
-            return identify_dict[identify]
-        else:
-            return False
-
-    #保持 source 連線
-    def msg_soucre_hand(self):
-        if not "msg_request" in self.connect_list:
-            data = self.conn.recv(2048)
-        return True
-    
-    #解析影像長度
-    def __img_len_decode(self, conn):
-        buffer = b""
-        while len(buffer) < self.payload_size:
-            data = conn.recv(self.recv_size)
-            if data:
-                buffer += data
-            else:
-                print("no data from video_source")
-                self.close_conn()
-                raise ValueError
-        packed_img_size = buffer[:self.payload_size]
-        img_size = struct.unpack(self.payload, packed_img_size)[0]
-        buffer = buffer[self.payload_size:]
-        return img_size, buffer, packed_img_size
-    
-    #接收壓縮資料
-    def __get_packed_img(self, conn, img_size, buffer):
-        while len(buffer) < img_size:
-            data = conn.recv(img_size - len(buffer))
-            if data:
-                buffer += data
-            else:
-                print("no data from video_source")
-                self.close_conn()
-                raise ValueError
-        #擷取、解析壓縮影像資訊
-        packed_img = buffer[:img_size]
-        #移除buffer中擷取過的影像資訊
-        buffer = buffer[img_size:]
-        #print(len(buffer))
-        return packed_img, buffer
-    
     #顯示影像
     def __show_packed_img(self, packed_img):
         data = np.frombuffer(packed_img, dtype = "uint8")
         img = cv2.imdecode(data, cv2.IMREAD_COLOR)
         cv2.imshow(self.windowname, img)
         cv2.waitKey(1)
-    
-    #設定video資源不公開 重設顯示視窗
-    def __set_public_false(self):
-        if len(self.connect_list["video_source"]) < 3:
-            #初始狀態
-            self.connect_list["video_source"].append(False)
-            self.public = self.connect_list["video_source"][2]
-            self.windowname = str(time.perf_counter())
-        elif self.public:
-            #可能是 video_request 離開需要改回不公開
-            self.public = False
-            self.windowname = str(time.perf_counter())
-    
-    #影像來源管理
-    def video_sorce_hand(self):
-        if not "video_request" in self.connect_list or len(self.connect_list["video_source"]) < 3:
-            #設定資源不公開
-            self.__set_public_false()
-                
-            #解析影像長度
-            (img_size, buffer, *_) = self.__img_len_decode(self.conn)
-            
-            #接收壓縮資料
-            (packed_img, buffer) = self.__get_packed_img(self.conn, img_size, buffer)
 
-            #顯示影像
-            self.__show_packed_img(packed_img)
-        
-        elif not self.public:
-            #有video_request就設定成公開資源
-            cv2.destroyAllWindows()
-            self.public = True
-        return True
+
+    #存圖片
+    def __write_img(self, packed_img):
+        data = np.frombuffer(packed_img, dtype = "uint8")
+        img = cv2.imdecode(data, cv2.IMREAD_COLOR)
+        cv2.imwrite(str(time.time())+'.jpg', img)
     
-    #設置影像解碼參數
-    def set_video_decode_para(self):
-        self.payload = ">L"
-        self.payload_size = struct.calcsize(self.payload)
-        self.recv_size = 4096
-    
-    def video_request_hand(self):
-        if not "video_source" in self.connect_list:
-            #沒有來源
-            print("requester no video source")
-            del self.connect_list["video_request"]
-            return False
-        
-        #選擇來源
-        source = self.connect_list["video_source"]
-        source_conn = source[0]
-        print("available video source for requester, from", source[1])
-        
+    #辨識影像客戶端
+    def video_detect_hand(self):
+        #取得影像來源
+        source_conn = self.get_video_source()
+
         #解析影像長度
         (img_size, buffer, packed_img_size) = self.__img_len_decode(source_conn)
         
         #接收壓縮資料
         (packed_img, buffer) = self.__get_packed_img(source_conn, img_size, buffer)
 
-        #傳送長度資訊+壓縮影像給requester
+        #傳送長度資訊+壓縮影像給 detecter
         self.conn.sendall(packed_img_size + packed_img)
-        return True
+            
+        #接受辨識結果
+        results = self.conn.recv(2048)
+        results = eval(results.decode())
+        #有人就存圖
+        if len(results) > 0:
+            #儲存圖片
+            self.__write_img(packed_img)
+    
 
-    #傳送訊息給遠端要求者
-    def msg_request_hand(self):
-        #選擇來源
-        if "msg_source" in self.connect_list:
-            source = self.connect_list["msg_source"]
-            source_conn = source[0]
-            print("available source", source[1])
-            data = source_conn.recv(2048)
-            if not data:
-                print("source is not available")
-                del self.connect_list["msg_request"]
-                return False
-            try:
-                self.conn.sendall(data)
-                return True
-            except Exception as e:
-                print(e)
-                print("connect error\n")
-                del self.connect_list["msg_request"]
-                return False
-        else:
-            data = bytes("no source conn\n", 'UTF-8')
-            self.conn.sendall(data)
-            del self.connect_list["msg_request"]
-            return False
 
 #伺服器
 class Server():
@@ -199,8 +61,9 @@ class Server():
         #綁定IP PORT
         self.server.bind((self.ip, self.port))
         print("Server bind at ",self.ip, self.port)
-        self.connect_list = {}
-        
+        #設定連線管理清單
+        self.resource_queue = mp.Queue(10)
+
     #等待客戶端連線
     def wait_connection(self):
         #聆聽
@@ -209,10 +72,160 @@ class Server():
             #等待連接
             print("wait for connect")
             conn, addr = self.server.accept()
-            print("dadda")
-            connect_handler = Connect_handler(conn, addr, self.connect_list)
-            connect_handler.start()
+            connector = Connector(conn, addr)
+            mp1 = mp.Process(target=connector.run, args=(self.resource_queue,))
+            mp1.start()
+
+#連線處理者模板
+class Holder():
+    #設置連線
+    def set_conn(self, client_conn:socket.socket, queue:mp.Queue):
+        print(type(self), "set conn")
+        self.conn = client_conn
+        self.queue = queue
+
+    #執行
+    def run(self):
+        pass
+
+#訊息提供者
+class Msg_provider(Holder):
+    def run(self):
+        self.push_message()
+
+    #推送訊息到佇列滿的話清掉最舊的
+    def push_message(self):
+        data = self.conn.recv(1024)
+        if not data:
+            #print("no connect from msg provider")
+            raise ConnectionError("no connect from msg provider")
+        if self.queue.full():
+            print("queue full")
+            self.queue.get()
+        self.queue.put(data)
+
+#訊息接收者
+class Msg_reciver(Holder):
+    def run(self):
+        self.recive_message()
+    
+    def recive_message(self):
+        data = self.queue.get()
+        self.conn.sendall(data)
+
+class Image_holder(Holder):
+    def set_conn(self, client_conn: socket.socket, queue: mp.Queue):
+        super().set_conn(client_conn, queue)
+        #設置影像解碼參數
+        self.payload = ">L"
+        self.payload_size = struct.calcsize(self.payload)
+        self.recv_size = 4096
+    
+    #解析影像長度
+    def img_len_decode(self, conn):
+        buffer = b""
+        while len(buffer) < self.payload_size:
+            data = conn.recv(self.recv_size)
+            if data:
+                buffer += data
+            else:
+                raise ConnectionError("no data from video_source")
+        packed_img_size = buffer[:self.payload_size]
+        img_size = struct.unpack(self.payload, packed_img_size)[0]
+        buffer = buffer[self.payload_size:]
+        return img_size, buffer, packed_img_size
+
+    #接收壓縮資料
+    def get_packed_img(self, conn, img_size, buffer):
+        while len(buffer) < img_size:
+            data = conn.recv(img_size - len(buffer))
+            #data = conn.recv(4096)
+            if data:
+                buffer += data
+            else:
+                raise ConnectionError("no data from video_source")
+        #擷取、解析壓縮影像資訊
+        packed_img = buffer[:img_size]
+        #移除buffer中擷取過的影像資訊
+        buffer = buffer[img_size:]
+        #print(len(buffer))
+        return packed_img, buffer
+
+#影像傳輸者
+class Video_provider(Image_holder):
+    def run(self):
+        self.push_image()
+    
+    def push_image(self):
+        #解析影像長度
+        (img_size, buffer, packed_img_size) = self.img_len_decode(self.conn)
+            
+        #接收壓縮資料
+        (packed_img, buffer) = self.get_packed_img(self.conn, img_size, buffer)
+        
+        #資料重組 推送訊息到佇列
+        data = packed_img_size + packed_img
+        if self.queue.full():
+            print("queue full")
+            self.queue.get()
+        self.queue.put(data)
+        #print("put")
+
+class Video_reciver(Holder):
+    def run(self):
+        self.recive_message()
+    
+    def recive_message(self):
+        data = self.queue.get()
+        self.conn.sendall(data)
+
+#連線管理者
+class Connector():
+    def __init__(self, client_conn:socket.socket, client_addr):
+        (self.conn, self.addr) = (client_conn, client_addr)
+    
+    #識別連線
+    def conn_identify(self) -> Holder:
+        #連線開始 先接受驗證訊息
+        data = self.conn.recv(100)
+        
+        #訊息解碼確認身分
+        identify = data.decode('UTF-8', errors='ignore')
+        self.conn.sendall(b'1')
+        print("identification: ", identify)
+
+        #驗證身分 錯誤的身分會引發例外中斷thread
+        return get_identify_holder(identify)
+
+    def run(self, resource_queue):
+        #識別連線
+        handler = self.conn_identify()
+        #處理連線
+        handler.set_conn(self.conn, resource_queue)
+        try:
+            while True:
+                handler.run()
+        except Exception as e:
+            #關閉連線
+            self.close_conn(e)
+        print(type(handler), "exit...")
+    
+    #關閉連線
+    def close_conn(self, reason):
+        self.conn.close()
+        print("Client at ", self.addr , " disconnected... for", reason)
+
+def get_identify_holder(identify:str) -> Holder:
+    idd = {
+        "msg_source" : Msg_provider(),  
+        "msg_request" : Msg_reciver(),
+        "video_source" : Video_provider(),
+        "video_request" : Video_reciver(),
+        "video_detect" : "self.video_detect_hand"
+    }
+    return idd[identify]
 
 if __name__ == "__main__":
     mm = Server("163.25.103.111", 9987)
     mm.wait_connection()
+    
