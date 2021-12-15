@@ -15,7 +15,7 @@ class Client():
     #連線到遠端伺服器
     def connect(self):
         self.remote_server.connect((self.remote_ip, self.remote_port))
-        self.send_data(bytes(self.client_name, "UTF-8"))
+        self.remote_server.sendall(bytes(self.client_name, "UTF-8"))
         self.remote_server.recv(1)
         print("connect to ", self.remote_ip, self.remote_port)
 

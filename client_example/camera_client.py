@@ -3,7 +3,7 @@ import socket
 import struct
 import numpy as np
 
-from ..src.client_api import Video_povider_client
+from client_api import Video_povider_client
 
 class Camera():
     def __init__(self, resolution, fps, cam_id = 0):#resolution = (640, 480)
