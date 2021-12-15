@@ -92,8 +92,8 @@ class Video_povider_client(Video_client):
         #加入時間資訊
         if t:
             str_t = str(t).split('.')
-            int_t = str_t[0]
-            float_t = str_t[1]
+            int_t = int(str_t[0])
+            float_t = int(str_t[1])
             packed += struct.pack(self.payload, int_t) + struct.pack(self.payload, float_t)
         #傳送給伺服器
         packed += img_encode_byte
