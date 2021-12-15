@@ -3,6 +3,8 @@ import socket
 import struct
 import numpy as np
 
+from ..src.client_api import Video_povider_client
+
 class Camera():
     def __init__(self, resolution, fps, cam_id = 0):#resolution = (640, 480)
         self.resolution = resolution
@@ -85,7 +87,7 @@ class Monitor_Client():
         self.remote_server.close()
 
 
-if __name__ == '__main__':
+if __name__ == '__main__2':
     cam = Camera((640, 480), 15)#"rtsp://admin:ppcb1234@192.168.154.15:554/unicast/c7/s1/live") #640 480
     #x = cam.get_encode_image()
     #cam.img_decode(x)
@@ -96,4 +98,12 @@ if __name__ == '__main__':
     ms.send_stream(cam)
     ms.close()
 
+
+if __name__ == '__main__':
+    vp = Video_povider_client("163.25.103.111", 9987, "video_source")
+    vp.connect()
+    cam = cv2.VideoCapture(0)
+
+    while True:
+        vp.send_image_from_cam(cam)
 

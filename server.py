@@ -8,48 +8,6 @@ import os
 import threading
 import multiprocessing as mp
 
-
-#伺服器處理連線
-class Connect_handler(threading.Thread):
-
-    #顯示影像
-    def __show_packed_img(self, packed_img):
-        data = np.frombuffer(packed_img, dtype = "uint8")
-        img = cv2.imdecode(data, cv2.IMREAD_COLOR)
-        cv2.imshow(self.windowname, img)
-        cv2.waitKey(1)
-
-
-    #存圖片
-    def __write_img(self, packed_img):
-        data = np.frombuffer(packed_img, dtype = "uint8")
-        img = cv2.imdecode(data, cv2.IMREAD_COLOR)
-        cv2.imwrite(str(time.time())+'.jpg', img)
-    
-    #辨識影像客戶端
-    def video_detect_hand(self):
-        #取得影像來源
-        source_conn = self.get_video_source()
-
-        #解析影像長度
-        (img_size, buffer, packed_img_size) = self.__img_len_decode(source_conn)
-        
-        #接收壓縮資料
-        (packed_img, buffer) = self.__get_packed_img(source_conn, img_size, buffer)
-
-        #傳送長度資訊+壓縮影像給 detecter
-        self.conn.sendall(packed_img_size + packed_img)
-            
-        #接受辨識結果
-        results = self.conn.recv(2048)
-        results = eval(results.decode())
-        #有人就存圖
-        if len(results) > 0:
-            #儲存圖片
-            self.__write_img(packed_img)
-    
-
-
 #伺服器
 class Server():
     def __init__(self, ip, port):
@@ -113,6 +71,7 @@ class Msg_reciver(Holder):
         data = self.queue.get()
         self.conn.sendall(data)
 
+#影像處理者模板
 class Image_holder(Holder):
     def set_conn(self, client_conn: socket.socket, queue: mp.Queue):
         super().set_conn(client_conn, queue)
@@ -164,20 +123,63 @@ class Video_provider(Image_holder):
         (packed_img, buffer) = self.get_packed_img(self.conn, img_size, buffer)
         
         #資料重組 推送訊息到佇列
-        data = packed_img_size + packed_img
-        if self.queue.full():
-            print("queue full")
+        data = (packed_img_size, packed_img)
+        while self.queue.full():
+            pass
+            #print("queue full")
             self.queue.get()
         self.queue.put(data)
         #print("put")
 
+#影像要求者
 class Video_reciver(Holder):
     def run(self):
         self.recive_message()
     
     def recive_message(self):
         data = self.queue.get()
-        self.conn.sendall(data)
+        self.conn.send(data[0])
+        self.conn.sendall(data[1])
+
+#影像辨識者
+class Video_detector(Image_holder):
+    def run(self):
+        self.detect()
+    
+    #接收辨識結果
+    def get_detect_result(self) -> list:
+        results = self.conn.recv(2048)
+        results = eval(results.decode())
+        return results
+
+    def write_image(self, results, packed_img):
+        if len(results) < 1:
+            return
+        #影像解碼
+        data = np.frombuffer(packed_img, dtype = "uint8")
+        img = cv2.imdecode(data, cv2.IMREAD_COLOR)
+        #寫入檔案
+        imgpath = os.path.join("data","image","raw",str(time.time())+'.jpg')
+        cv2.imwrite(imgpath, img)
+
+    def show_image(self, packed_img):
+        #影像解碼
+        data = np.frombuffer(packed_img, dtype = "uint8")
+        img = cv2.imdecode(data, cv2.IMREAD_COLOR)
+        cv2.imshow('live', img)
+        cv2.waitKey(1)
+
+    def detect(self):
+        #傳送影像資料給辨識端
+        data = self.queue.get()
+        self.conn.send(data[0])
+        self.conn.sendall(data[1])
+        #接收辨識結果
+        results = self.get_detect_result()
+        #顯示影像
+        self.show_image(data[1])
+        self.write_image(results, data[1])
+
 
 #連線管理者
 class Connector():
@@ -221,7 +223,7 @@ def get_identify_holder(identify:str) -> Holder:
         "msg_request" : Msg_reciver(),
         "video_source" : Video_provider(),
         "video_request" : Video_reciver(),
-        "video_detect" : "self.video_detect_hand"
+        "video_detect" : Video_detector()
     }
     return idd[identify]
 
