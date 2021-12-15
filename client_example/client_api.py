@@ -88,7 +88,7 @@ class Video_povider_client(Video_client):
         img_encode_byte = img_encode.tobytes()
         #取得影像長度並打包
         img_encode_byte_size = len(img_encode_byte)
-        packed = struct.pack(self.payload, img_encode_byte_size) + img_encode_byte
+        packed = struct.pack(self.payload, img_encode_byte_size) 
         #加入時間資訊
         if t:
             str_t = str(t).split('.')
@@ -96,4 +96,5 @@ class Video_povider_client(Video_client):
             float_t = str_t[1]
             packed += struct.pack(self.payload, int_t) + struct.pack(self.payload, float_t)
         #傳送給伺服器
+        packed += img_encode_byte
         self.remote_server.sendall(packed)
