@@ -48,8 +48,6 @@ class Video_client(Client):
         t_float = struct.unpack(self.payload, packed_t_float)[0]
         t_str = '{}.{}'.format(t_int, t_float)
         t = float(t_str)
-        rlt = time.time() - t
-        print(rlt)
 
         #影像解碼
         buffer = buffer[self.payload_size:]

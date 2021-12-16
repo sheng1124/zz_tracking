@@ -11,4 +11,5 @@ if __name__ == '__main__':
 
     while True:
         vp.send_image_from_cam(cam)
+        print('send')
 

@@ -22,7 +22,11 @@ class Server():
         print("Server bind at ",self.ip, self.port)
         #設定連線管理清單
         self.resource_queue = mp.Queue(10)
-        self.queue_dict = {'video_resource':mp.Queue(10), 'starttime':mp.Queue(1)}
+        self.queue_dict = {
+            'video_queue':mp.Queue(10),
+            'request_queue':mp.Queue(1),
+            'detect_queue' : mp.Queue(10)
+            }
 
     #等待客戶端連線
     def wait_connection(self):
@@ -78,7 +82,7 @@ class Image_holder(Holder):
     def set_conn(self, client_conn: socket.socket, queue_dict: Dict):
         super().set_conn(client_conn, queue_dict)
         #設置影像解碼參數
-        self.queue = self.queue_dict['video_resource']
+        self.queue = self.queue_dict['video_queue']
         self.payload = ">L"
         self.payload_size = struct.calcsize(self.payload)
         self.recv_size = 4096
@@ -127,8 +131,15 @@ class Image_holder(Holder):
 
 #影像傳輸者
 class Video_provider(Image_holder):
+    def set_conn(self, client_conn: socket.socket, queue_dict: Dict):
+        super().set_conn(client_conn, queue_dict)
+        self.request_queue = queue_dict['request_queue']
+
     def run(self):
-        self.push_image()
+        if not self.request_queue.empty():
+            self.push_image()
+        else:
+            print('wait request')
     
     def push_image(self):
         #解析影像長度
@@ -142,7 +153,6 @@ class Video_provider(Image_holder):
         #資料重組 推送訊息到佇列
         data = (packed_img_size, packed_t_int, packed_t_float, packed_img)
         while self.queue.full():
-            
             #print("queue full")
             self.queue.get()
         self.queue.put(data)
@@ -157,8 +167,39 @@ class Video_reciver(Image_holder):
         data = self.queue.get()
         self.conn.sendall(data[0] + data[1] + data[2] + data[3])
 
+#影像辨識要求者
+class Detect_request(Image_holder):
+    def set_conn(self, client_conn: socket.socket, queue_dict: Dict):
+        super().set_conn(client_conn, queue_dict)
+        self.detect_queue = queue_dict['detect_queue']
+        self.request_queue = queue_dict['request_queue']
+        self.request_queue.put('time')
+        self.start_time = time.time()
+        self.max_time = 3600.0
+    
+    def run(self):
+        try:
+            self.recive_message()
+        except Exception as e:
+            self.pop_request()
+            raise e
+
+    def recive_message(self):
+        if time.time() - self.start_time > self.max_time:
+            raise AttributeError("out max limit")
+        data = self.detect_queue.get()
+        self.conn.sendall(data[0] + data[1] + data[2] + data[3])
+
+    #清掉要求queue避免佔用
+    def pop_request(self):
+        self.request_queue.get()
+
 #影像辨識者
 class Video_detector(Image_holder):
+    def set_conn(self, client_conn: socket.socket, queue_dict: Dict):
+        super().set_conn(client_conn, queue_dict)
+        self.detect_queue = queue_dict['detect_queue']
+
     def run(self):
         self.detect()
     
@@ -168,34 +209,39 @@ class Video_detector(Image_holder):
         results = eval(results.decode())
         return results
 
-    def write_image(self, results, packed_img):
+    def write_image(self, results, img):
         if len(results) < 1:
             return
-        #影像解碼
-        data = np.frombuffer(packed_img, dtype = "uint8")
-        img = cv2.imdecode(data, cv2.IMREAD_COLOR)
         #寫入檔案
         imgpath = os.path.join("data","image","raw",str(time.time())+'.jpg')
         cv2.imwrite(imgpath, img)
 
-    def show_image(self, packed_img):
-        #影像解碼
-        data = np.frombuffer(packed_img, dtype = "uint8")
-        img = cv2.imdecode(data, cv2.IMREAD_COLOR)
+    def show_image(self, img):
         cv2.imshow('live', img)
         cv2.waitKey(1)
+
+    #解碼
+    def data_decode(self, data):
+        t_int = struct.unpack(self.payload, data[1])[0]
+        t_float = struct.unpack(self.payload, data[2])[0]
+        t = float('{}.{}'.format(t_int, t_float))
+        img_packed = np.frombuffer(data[3], dtype = "uint8")
+        img = cv2.imdecode(img_packed, cv2.IMREAD_COLOR)
+        return (t, img)
 
     def detect(self):
         #傳送影像資料給辨識端
         data = self.queue.get()
-        self.conn.send(data[0])
-        self.conn.sendall(data[1])
+        self.conn.sendall(data[0] + data[3])
+        #解碼
+        (t, img) = self.data_decode(data)
         #接收辨識結果
         results = self.get_detect_result()
-        #顯示影像
-        self.show_image(data[1])
-        self.write_image(results, data[1])
-
+        #畫圖像
+        #圖像壓縮計算長度
+        #丟進辨識進結果queue
+        self.detect_queue.put(data)
+        #上傳資料庫
 
 #連線管理者
 class Connector():
@@ -239,7 +285,8 @@ def get_identify_holder(identify:str) -> Holder:
         "msg_request" : Msg_reciver(),
         "video_source" : Video_provider(),
         "video_request" : Video_reciver(),
-        "video_detect" : Video_detector()
+        "video_detect" : Video_detector(),
+        "detect_request" : Detect_request()
     }
     return idd[identify]
 
