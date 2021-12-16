@@ -31,7 +31,7 @@ class Server():
     #等待客戶端連線
     def wait_connection(self):
         #聆聽
-        self.server.listen(2)
+        self.server.listen(4)
         while True:
             #等待連接
             print("wait for connect")
@@ -138,8 +138,6 @@ class Video_provider(Image_holder):
     def run(self):
         if not self.request_queue.empty():
             self.push_image()
-        else:
-            print('wait request')
     
     def push_image(self):
         #解析影像長度
@@ -182,7 +180,7 @@ class Detect_request(Image_holder):
             self.recive_message()
         except Exception as e:
             self.pop_request()
-            raise e
+            #raise e
 
     def recive_message(self):
         if time.time() - self.start_time > self.max_time:
@@ -199,10 +197,19 @@ class Video_detector(Image_holder):
     def set_conn(self, client_conn: socket.socket, queue_dict: Dict):
         super().set_conn(client_conn, queue_dict)
         self.detect_queue = queue_dict['detect_queue']
+        self.encode_parm=[int(cv2.IMWRITE_JPEG_QUALITY), 100]
 
     def run(self):
         self.detect()
     
+    #畫人框
+    def draw_frame(self, img, results):
+        w = int(img.shape[1])
+        h = int(img.shape[0])
+        for box in results:
+            (x1, y1, x2, y2) = (int(box[0] * w), int(box[1] * h), int(box[2] * w), int(box[3] * h))
+            cv2.rectangle(img, (x1, y1), (x2, y2), (255, 0, 0), 2)
+
     #接收辨識結果
     def get_detect_result(self) -> list:
         results = self.conn.recv(2048)
@@ -229,18 +236,32 @@ class Video_detector(Image_holder):
         img = cv2.imdecode(img_packed, cv2.IMREAD_COLOR)
         return (t, img)
 
+    #影像壓縮取得壓縮後的長度和img
+    def data_encode(self, img):
+        ret, img_encode = cv2.imencode(".jpg", img, self.encode_parm)
+        img_encode_byte = img_encode.tobytes()
+        img_encode_byte_size = len(img_encode_byte)
+        size_en = struct.pack(self.payload, img_encode_byte_size)
+        return size_en, img_encode_byte
+
     def detect(self):
         #傳送影像資料給辨識端
         data = self.queue.get()
         self.conn.sendall(data[0] + data[3])
+        newdata = [data[0], data[1], data[2], data[3]]
         #解碼
         (t, img) = self.data_decode(data)
         #接收辨識結果
         results = self.get_detect_result()
-        #畫圖像
-        #圖像壓縮計算長度
+        if len(results) > 0:
+            #有解果就畫圖像
+            self.draw_frame(img, results)
+            #圖像壓縮計算長度
+            (size_img_pack, img_pack) = self.data_encode(img)
+            newdata[0], newdata[3] = size_img_pack, img_pack
+        
         #丟進辨識進結果queue
-        self.detect_queue.put(data)
+        self.detect_queue.put(newdata)
         #上傳資料庫
 
 #連線管理者
@@ -272,6 +293,7 @@ class Connector():
         except Exception as e:
             #關閉連線
             self.close_conn(e)
+            #raise e
         print(type(handler), "exit...")
     
     #關閉連線
