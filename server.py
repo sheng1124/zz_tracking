@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from typing import Dict
 import cv2
 import numpy as np
 import socket
@@ -21,6 +22,7 @@ class Server():
         print("Server bind at ",self.ip, self.port)
         #設定連線管理清單
         self.resource_queue = mp.Queue(10)
+        self.queue_dict = {'video_resource':mp.Queue(10), 'starttime':mp.Queue(1)}
 
     #等待客戶端連線
     def wait_connection(self):
@@ -31,16 +33,16 @@ class Server():
             print("wait for connect")
             conn, addr = self.server.accept()
             connector = Connector(conn, addr)
-            mp1 = mp.Process(target=connector.run, args=(self.resource_queue,))
+            mp1 = mp.Process(target=connector.run, args=(self.queue_dict,))
             mp1.start()
 
 #連線處理者模板
 class Holder():
     #設置連線
-    def set_conn(self, client_conn:socket.socket, queue:mp.Queue):
+    def set_conn(self, client_conn:socket.socket, queue_dict:Dict):
         print(type(self), "set conn")
         self.conn = client_conn
-        self.queue = queue
+        self.queue_dict = queue_dict
 
     #執行
     def run(self):
@@ -73,9 +75,10 @@ class Msg_reciver(Holder):
 
 #影像處理者模板
 class Image_holder(Holder):
-    def set_conn(self, client_conn: socket.socket, queue: mp.Queue):
-        super().set_conn(client_conn, queue)
+    def set_conn(self, client_conn: socket.socket, queue_dict: Dict):
+        super().set_conn(client_conn, queue_dict)
         #設置影像解碼參數
+        self.queue = self.queue_dict['video_resource']
         self.payload = ">L"
         self.payload_size = struct.calcsize(self.payload)
         self.recv_size = 4096
@@ -93,6 +96,18 @@ class Image_holder(Holder):
         img_size = struct.unpack(self.payload, packed_img_size)[0]
         buffer = buffer[self.payload_size:]
         return img_size, buffer, packed_img_size
+
+    #解析影像時間
+    def img_time_decode(self, conn, buffer):
+        packed_t_int = buffer[:self.payload_size]
+        t_int = struct.unpack(self.payload, packed_t_int)[0]
+        buffer = buffer[self.payload_size:]
+        packed_t_float = buffer[:self.payload_size]
+        t_float = struct.unpack(self.payload, packed_t_float)[0]
+        #t_str = '{}.{}'.format(t_int, t_float)
+        #t = float(t_str)
+        buffer = buffer[self.payload_size:]
+        return t_int, t_float, buffer, packed_t_int, packed_t_float
 
     #接收壓縮資料
     def get_packed_img(self, conn, img_size, buffer):
@@ -118,28 +133,29 @@ class Video_provider(Image_holder):
     def push_image(self):
         #解析影像長度
         (img_size, buffer, packed_img_size) = self.img_len_decode(self.conn)
-            
+
+        #解析時間
+        (t_int, t_float, buffer, packed_t_int, packed_t_float) = self.img_time_decode(self.conn, buffer)
         #接收壓縮資料
         (packed_img, buffer) = self.get_packed_img(self.conn, img_size, buffer)
         
         #資料重組 推送訊息到佇列
-        data = (packed_img_size, packed_img)
+        data = (packed_img_size, packed_t_int, packed_t_float, packed_img)
         while self.queue.full():
-            pass
+            
             #print("queue full")
             self.queue.get()
         self.queue.put(data)
         #print("put")
 
 #影像要求者
-class Video_reciver(Holder):
+class Video_reciver(Image_holder):
     def run(self):
         self.recive_message()
     
     def recive_message(self):
         data = self.queue.get()
-        self.conn.send(data[0])
-        self.conn.sendall(data[1])
+        self.conn.sendall(data[0] + data[1] + data[2] + data[3])
 
 #影像辨識者
 class Video_detector(Image_holder):

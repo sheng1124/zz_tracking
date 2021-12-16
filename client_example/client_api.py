@@ -38,20 +38,18 @@ class Video_client(Client):
             buffer += self.remote_server.recv(4096)
         packed_img_size = buffer[:self.payload_size]
         img_size = struct.unpack(self.payload, packed_img_size)[0]
-
         #時間解碼
+        
         buffer = buffer[self.payload_size:]
-        while len(buffer) < self.payload_size:
-            buffer += self.remote_server.recv(4096)
         packed_t_int = buffer[:self.payload_size]
         t_int = struct.unpack(self.payload, packed_t_int)[0]
         buffer = buffer[self.payload_size:]
-        while len(buffer) < self.payload_size:
-            buffer += self.remote_server.recv(4096)
         packed_t_float = buffer[:self.payload_size]
         t_float = struct.unpack(self.payload, packed_t_float)[0]
-        t_str = '{}.{}'.format(t_int, packed_t_float)
+        t_str = '{}.{}'.format(t_int, t_float)
         t = float(t_str)
+        rlt = time.time() - t
+        print(rlt)
 
         #影像解碼
         buffer = buffer[self.payload_size:]
