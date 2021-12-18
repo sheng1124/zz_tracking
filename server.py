@@ -180,7 +180,7 @@ class Detect_request(Image_holder):
             self.recive_message()
         except Exception as e:
             self.pop_request()
-            #raise e
+            raise e
 
     def recive_message(self):
         if time.time() - self.start_time > self.max_time:
