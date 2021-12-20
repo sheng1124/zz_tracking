@@ -4,7 +4,7 @@ import time
 import numpy as np
 import cv2
 from typing import Dict
-import tracker
+from utils.peko_utils import tracker
 
 #Holder 必須要用 multli processing or multi threading 執行
 
