@@ -166,17 +166,18 @@ class Video_detector(Image_holder):
         super().set_conn(client_conn, queue_dict)
         self.detect_queue = queue_dict['detect_queue']
         self.encode_parm=[int(cv2.IMWRITE_JPEG_QUALITY), 100]
+        self.track_manager = tracker.Tracker_manager()
 
     def run(self):
         self.detect()
     
     #畫人框
     def draw_frame(self, img, results):
-        w = int(img.shape[1])
-        h = int(img.shape[0])
-        for box in results:
-            (x1, y1, x2, y2) = (int(box[0] * w), int(box[1] * h), int(box[2] * w), int(box[3] * h))
+        #results = [[id, coord, ...], ]
+        for id, coord in results:
+            (x1, y1, x2, y2) = coord
             cv2.rectangle(img, (x1, y1), (x2, y2), (255, 0, 0), 2)
+            cv2.putText(img, str(id) , (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255,0,0), 2)
 
     #接收辨識結果
     def get_detect_result(self) -> list:
@@ -212,13 +213,6 @@ class Video_detector(Image_holder):
         size_en = struct.pack(self.payload, img_encode_byte_size)
         return size_en, img_encode_byte
 
-    
-    def tracking(self, results):
-        #
-        for box in results:
-            #如果tracking list < 1 建立新的tracker
-            pass
-
     def detect(self):
         #傳送影像資料給辨識端
         data = self.queue.get()
@@ -226,18 +220,22 @@ class Video_detector(Image_holder):
         newdata = [data[0], data[1], data[2], data[3]]
         #解碼
         (t, img) = self.data_decode(data)
+        #存原始影像圖?
         #接收辨識結果
         results = self.get_detect_result()
         #追蹤 bounding box
-
-
+        self.track_manager.input_boxs(results, t, img.shape)
+        #取得所有box的追蹤資訊(by time)
+        tracking_results = self.track_manager.get_tracking_result(t)
+        #取得追蹤清單
+        #寫出有速度資訊的追蹤者並標記追蹤id
+        #依據追蹤資訊畫圖 標記id 中心點 足跡
+        self.draw_frame(img, tracking_results)
         if len(results) > 0:
-            #有解果就畫圖像
-            self.draw_frame(img, results)
             #圖像壓縮計算長度
             (size_img_pack, img_pack) = self.data_encode(img)
             newdata[0], newdata[3] = size_img_pack, img_pack
         
-        #丟進辨識進結果queue
+        #丟進辨識結果queue
         self.detect_queue.put(newdata)
         #上傳資料庫
