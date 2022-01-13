@@ -1,4 +1,3 @@
-
 #管理追蹤者 管理並指派框給追蹤者
 #一個box至少指派一個tracker
 #一個tracker只能指派一個box
@@ -22,7 +21,14 @@ class Tracker_manager():
         #有重疊的情況(一個box有兩個適合的tracker) 需要多重比較
         #還沒指派的box(有重疊)會先放到eval_table ?
         #檢查未追蹤列表 這裡應該所有的box會指派完 若有剩餘的 檢查是否離場或躲起來
-        #離場的刪除 未離場的可以保留 < 3sec 超過3秒即刪除
+        for i in range(len(self.untrack_list)):
+            tracker = self.untrack_list.pop()
+            #tracker 計算目前與上一個box的時間差
+            td = tracker.count_time_diff(gtime)
+            if td <= 3:
+                self.tracker_list.append(tracker)
+
+            #離場的刪除 未離場的可以保留(送進以追蹤列表) < 3sec 超過3秒即刪除
         
 
     
@@ -37,6 +43,12 @@ class Tracker_manager():
         return tracking_results
 
     #取得追蹤清單
+    def get_tracker_list(self):
+        tracker_list = [] # [ [id,[[x1,... ,t], [x1,...,t], []]],  ]
+        for tracker in self.tracker_list:
+            box_list = tracker.get_box_list()
+            tracker_list.append(box_list)
+        return tracker_list
 
     #評估候選結果
     def eval_campare(self, coord, gtime):
@@ -44,12 +56,12 @@ class Tracker_manager():
         eval_table = []
         for i in range(len(self.untrack_list)):
             tracker = self.untrack_list[i]
-            print('tracker:{} compare with ', coord)
+            print('tracker:', tracker.id, ' compare with ', coord)
             comparison = tracker.campare_coord(coord, gtime)
             print('comparison', comparison)
             eval_table.append([i, comparison])
         print('eval table = ', eval_table)
-        #過濾分數 過濾偏差>30?>15        
+        #過濾分數 過濾偏差>30?>15 時間差 > 3秒        
         new_eval_table = []
         for index, comparison in eval_table:
             if not self.is_out_specific(comparison):
@@ -78,26 +90,41 @@ class Tracker_manager():
             #加入已追蹤列表
             self.tracker_list.append(tracker)
         else:
+            #一個box有多個符合的tracker
             # >1 表示 可能有人重疊
             #eval_table >1 = [[5,[4,3]], [2,[1,-6]]]
             #多重比較
             # multi_eval_table row == col 找最近, 都很近=>比較方向
             # row != col 某人被某人遮擋 box可能要指派給多人
             # box_coord: [trackerid, trackerid]
-            pass
-    
+            
+            #直接分配最近的
+            min_eval = -1
+            table = []
+            for index, comparison in eval_table:
+                eval_sum = sum(comparison[0:3])
+                if min_eval == -1 or eval_sum < min_eval:
+                    min_eval = eval_sum
+                    table = (index, comparison)
+
+            #從trackerlist pop 出那個tracker
+            tracker_index = table[0] # [index, comparison]
+            tracker = self.untrack_list.pop(tracker_index)
+            print('find one tracker profit ', tracker.id)
+            #指派box
+            tracker.set_box(coord, gtime)
+            #加入已追蹤列表
+            self.tracker_list.append(tracker)
+
     #過濾比較分數
     def is_out_specific(self, comparison):
         #comparison = [右邊界偏差 上邊界偏差 左邊 下邊 方向速度]
-        if comparison[0] > 100 and comparison[1] > 100 and comparison[2] > 100 and comparison[3] > 100:
+        if (comparison[0] > 30 and comparison[1] > 30
+            and comparison[2] > 30 and comparison[3] > 30 and comparison[4] < 3):
             return True
         else:
             return False
         
-
-
-
-    
 
 #儲存box資訊的基本單位，不參與評估，等待指派box
 class Tracker():
@@ -122,6 +149,12 @@ class Tracker():
     def get_last_box(self):
         return self.box_list[-1]
 
+    def get_box_list(self): #->[id, box_list]
+        box_list = []
+        for ctime, coord in self.box_list:
+            box_list.append(coord)
+        return [self.id, box_list]
+
     #檢查有沒有在檢查點 有的話計算平均速度
 
     #儲存框,足跡,速度
@@ -135,9 +168,13 @@ class Tracker():
         rd = coord[2] - last_coord[2] #x2 - x2
         ud = coord[1] - last_coord[1] #y1 - y1
         dd = coord[3] - last_coord[3] #y2 - y2
-        return [abs(ld), abs(ud), abs(rd), abs(dd), 0]
+        td = gtime - last_time
+        return [abs(ld), abs(ud), abs(rd), abs(dd), td]
 
-    
+    #計算目前與上一個box的時間差
+    def count_time_diff(self, gtime):
+        last_time, last_coord = self.get_last_box()
+        return gtime - last_time
 
     #位置相近時間差距大 > 2sec
 

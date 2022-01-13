@@ -2,8 +2,8 @@
 from typing import Dict
 import socket
 import multiprocessing as mp
-
-from utils import holder
+from utils.peko_utils import holder
+from utils.peko_utils import manager
 
 #伺服器
 class Server():
@@ -16,24 +16,55 @@ class Server():
         #綁定IP PORT
         self.server.bind((self.ip, self.port))
         print("Server bind at ",self.ip, self.port)
+        
         #設定連線管理清單
-        self.resource_queue = mp.Queue(10)
-        self.queue_dict = {
-            'video_queue':mp.Queue(10),
-            'request_queue':mp.Queue(1),
-            'detect_queue' : mp.Queue(10)
-            }
+        manager = mp.Manager()
+        self.source_dict = manager.dict()
+        self.request_dict = manager.list()
+        #sd['123'] = None => 來源123有掛機沒輸出
+        #sd['123'] = 1 => 使用1號辨識機
+        self.detect_output_list = manager.list()
+        #dod[1] = None => 1號辨識機有掛機沒輸出
+        #dod[1] = 1 => 1號辨識機輸出到1號要求端
+        #來源佇列 把辨識輸入給來源 hander 傳輸
+        
+        #辨識佇列 輸入
+        self.detect_input_q1 = mp.Queue(20)
+
+        #辨識佇列 輸出會把資料丟給 要求 handler
+
+        #要求佇列 最多就5個要求吧
+        self.request_queue_1 = mp.Queue(20)
+        self.request_queue_2 = mp.Queue(20)
+        self.request_queue_3 = mp.Queue(20)
+        self.request_queue_4 = mp.Queue(20)
+        self.request_queue_5 = mp.Queue(20)
+
+        #設定 process 共享參數，別用一般list or dict 當共享 毛很多
+        self.shared_args = (
+            self.source_dict,
+            self.detect_output_list,
+            self.request_dict,
+            self.detect_input_q1,
+            self.request_queue_1,
+            self.request_queue_2,
+            self.request_queue_3,
+            self.request_queue_4,
+            self.request_queue_5
+        )
+
+        #客戶端佇列
 
     #等待客戶端連線
     def wait_connection(self):
         #聆聽
-        self.server.listen(4)
+        self.server.listen(20)
         while True:
             #等待連接
             print("wait for connect")
             conn, addr = self.server.accept()
             connector = Connector(conn, addr)
-            mp1 = mp.Process(target=connector.run, args=(self.queue_dict,))
+            mp1 = mp.Process(target=connector.run, args=self.shared_args)
             mp1.start()
 
 #連線管理者
@@ -54,18 +85,17 @@ class Connector():
         #驗證身分 錯誤的身分會引發例外中斷thread
         return get_identify_holder(identify)
 
-    def run(self, resource_queue):
+    def run(self, *shared_args):
         #識別連線
         handler = self.conn_identify()
         #處理連線
-        handler.set_conn(self.conn, resource_queue)
+        handler.set_conn(self.conn, shared_args)
         try:
             while True:
                 handler.run()
         except Exception as e:
             #關閉連線
             self.close_conn(e)
-            #raise e
         print(type(handler), "exit...")
     
     #關閉連線
@@ -83,6 +113,7 @@ def get_identify_holder(identify:str) -> holder.Holder:
         "detect_request" : holder.Detect_request()
     }
     return idd[identify]
+
 
 if __name__ == "__main__":
     mm = Server("163.25.103.111", 9987)

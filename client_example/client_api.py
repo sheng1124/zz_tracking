@@ -19,9 +19,27 @@ class Client():
         self.remote_server.recv(1)
         print("connect to ", self.remote_ip, self.remote_port)
 
+    #設定來源名稱
+    def set_source_name(self, source_name):
+        self.remote_server.sendall(bytes(source_name, "UTF-8"))
+        self.remote_server.recv(1)
+
     #關閉連線
     def close(self):
         self.remote_server.close()
+
+    #是否可傳輸資料
+    def is_transport(self):
+        con_code = self.remote_server.recv(1)
+        if con_code == b'0':
+            return False
+        else:
+            return True
+
+    #回應伺服器
+    def response(self):
+        self.remote_server.sendall(b'1')
+
 
 #影像相關客戶端
 class Video_client(Client):

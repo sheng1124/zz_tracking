@@ -9,6 +9,9 @@ if __name__ == '__main__':
     vc = Video_client("163.25.103.111", 9987, "detect_request")
     vc.connect()
 
+    source = input('enter source name\n')
+    vc.set_source_name(source)
+
     #顯示影像
     while True:
         (t, img) = vc.get_image()
