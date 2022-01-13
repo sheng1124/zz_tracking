@@ -12,11 +12,13 @@ if __name__ == '__main__':
     cam.set(cv2.CAP_PROP_FRAME_WIDTH, 720)
     cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
+    source = input('enter source name\n')
+    vp.set_source_name(source)
+
     while True:
-        try:
+        if vp.is_transport():
+            #time.sleep(3)
             vp.send_image_from_cam(cam)
-        except Exception as e:
-            print(e)
-            cam.release()
-            cam = cv2.VideoCapture(cam_id)
+        else:
+            vp.response()
 
