@@ -1,13 +1,9 @@
 # -*- coding: utf-8 -*-
 from typing import Dict
-import cv2
-import numpy as np
 import socket
-import struct
-import time
-import os
-import threading
 import multiprocessing as mp
+from utils.peko_utils import holder
+from utils.peko_utils import manager
 
 #伺服器
 class Server():
@@ -20,228 +16,56 @@ class Server():
         #綁定IP PORT
         self.server.bind((self.ip, self.port))
         print("Server bind at ",self.ip, self.port)
+        
         #設定連線管理清單
-        self.resource_queue = mp.Queue(10)
-        self.queue_dict = {
-            'video_queue':mp.Queue(10),
-            'request_queue':mp.Queue(1),
-            'detect_queue' : mp.Queue(10)
-            }
+        manager = mp.Manager()
+        self.source_dict = manager.dict()
+        self.request_dict = manager.list()
+        #sd['123'] = None => 來源123有掛機沒輸出
+        #sd['123'] = 1 => 使用1號辨識機
+        self.detect_output_list = manager.list()
+        #dod[1] = None => 1號辨識機有掛機沒輸出
+        #dod[1] = 1 => 1號辨識機輸出到1號要求端
+        #來源佇列 把辨識輸入給來源 hander 傳輸
+        
+        #辨識佇列 輸入
+        self.detect_input_q1 = mp.Queue(20)
+
+        #辨識佇列 輸出會把資料丟給 要求 handler
+
+        #要求佇列 最多就5個要求吧
+        self.request_queue_1 = mp.Queue(20)
+        self.request_queue_2 = mp.Queue(20)
+        self.request_queue_3 = mp.Queue(20)
+        self.request_queue_4 = mp.Queue(20)
+        self.request_queue_5 = mp.Queue(20)
+
+        #設定 process 共享參數，別用一般list or dict 當共享 毛很多
+        self.shared_args = (
+            self.source_dict,
+            self.detect_output_list,
+            self.request_dict,
+            self.detect_input_q1,
+            self.request_queue_1,
+            self.request_queue_2,
+            self.request_queue_3,
+            self.request_queue_4,
+            self.request_queue_5
+        )
+
+        #客戶端佇列
 
     #等待客戶端連線
     def wait_connection(self):
         #聆聽
-        self.server.listen(2)
+        self.server.listen(20)
         while True:
             #等待連接
             print("wait for connect")
             conn, addr = self.server.accept()
             connector = Connector(conn, addr)
-            mp1 = mp.Process(target=connector.run, args=(self.queue_dict,))
+            mp1 = mp.Process(target=connector.run, args=self.shared_args)
             mp1.start()
-
-#連線處理者模板
-class Holder():
-    #設置連線
-    def set_conn(self, client_conn:socket.socket, queue_dict:Dict):
-        print(type(self), "set conn")
-        self.conn = client_conn
-        self.queue_dict = queue_dict
-
-    #執行
-    def run(self):
-        pass
-
-#訊息提供者
-class Msg_provider(Holder):
-    def run(self):
-        self.push_message()
-
-    #推送訊息到佇列滿的話清掉最舊的
-    def push_message(self):
-        data = self.conn.recv(1024)
-        if not data:
-            #print("no connect from msg provider")
-            raise ConnectionError("no connect from msg provider")
-        if self.queue.full():
-            print("queue full")
-            self.queue.get()
-        self.queue.put(data)
-
-#訊息接收者
-class Msg_reciver(Holder):
-    def run(self):
-        self.recive_message()
-    
-    def recive_message(self):
-        data = self.queue.get()
-        self.conn.sendall(data)
-
-#影像處理者模板
-class Image_holder(Holder):
-    def set_conn(self, client_conn: socket.socket, queue_dict: Dict):
-        super().set_conn(client_conn, queue_dict)
-        #設置影像解碼參數
-        self.queue = self.queue_dict['video_queue']
-        self.payload = ">L"
-        self.payload_size = struct.calcsize(self.payload)
-        self.recv_size = 4096
-    
-    #解析影像長度
-    def img_len_decode(self, conn):
-        buffer = b""
-        while len(buffer) < self.payload_size:
-            data = conn.recv(self.recv_size)
-            if data:
-                buffer += data
-            else:
-                raise ConnectionError("no data from video_source")
-        packed_img_size = buffer[:self.payload_size]
-        img_size = struct.unpack(self.payload, packed_img_size)[0]
-        buffer = buffer[self.payload_size:]
-        return img_size, buffer, packed_img_size
-
-    #解析影像時間
-    def img_time_decode(self, conn, buffer):
-        packed_t_int = buffer[:self.payload_size]
-        t_int = struct.unpack(self.payload, packed_t_int)[0]
-        buffer = buffer[self.payload_size:]
-        packed_t_float = buffer[:self.payload_size]
-        t_float = struct.unpack(self.payload, packed_t_float)[0]
-        #t_str = '{}.{}'.format(t_int, t_float)
-        #t = float(t_str)
-        buffer = buffer[self.payload_size:]
-        return t_int, t_float, buffer, packed_t_int, packed_t_float
-
-    #接收壓縮資料
-    def get_packed_img(self, conn, img_size, buffer):
-        while len(buffer) < img_size:
-            data = conn.recv(img_size - len(buffer))
-            #data = conn.recv(4096)
-            if data:
-                buffer += data
-            else:
-                raise ConnectionError("no data from video_source")
-        #擷取、解析壓縮影像資訊
-        packed_img = buffer[:img_size]
-        #移除buffer中擷取過的影像資訊
-        buffer = buffer[img_size:]
-        #print(len(buffer))
-        return packed_img, buffer
-
-#影像傳輸者
-class Video_provider(Image_holder):
-    def set_conn(self, client_conn: socket.socket, queue_dict: Dict):
-        super().set_conn(client_conn, queue_dict)
-        self.request_queue = queue_dict['request_queue']
-
-    def run(self):
-        if not self.request_queue.empty():
-            self.push_image()
-        else:
-            print('wait request')
-    
-    def push_image(self):
-        #解析影像長度
-        (img_size, buffer, packed_img_size) = self.img_len_decode(self.conn)
-
-        #解析時間
-        (t_int, t_float, buffer, packed_t_int, packed_t_float) = self.img_time_decode(self.conn, buffer)
-        #接收壓縮資料
-        (packed_img, buffer) = self.get_packed_img(self.conn, img_size, buffer)
-        
-        #資料重組 推送訊息到佇列
-        data = (packed_img_size, packed_t_int, packed_t_float, packed_img)
-        while self.queue.full():
-            #print("queue full")
-            self.queue.get()
-        self.queue.put(data)
-        #print("put")
-
-#影像要求者
-class Video_reciver(Image_holder):
-    def run(self):
-        self.recive_message()
-    
-    def recive_message(self):
-        data = self.queue.get()
-        self.conn.sendall(data[0] + data[1] + data[2] + data[3])
-
-#影像辨識要求者
-class Detect_request(Image_holder):
-    def set_conn(self, client_conn: socket.socket, queue_dict: Dict):
-        super().set_conn(client_conn, queue_dict)
-        self.detect_queue = queue_dict['detect_queue']
-        self.request_queue = queue_dict['request_queue']
-        self.request_queue.put('time')
-        self.start_time = time.time()
-        self.max_time = 3600.0
-    
-    def run(self):
-        try:
-            self.recive_message()
-        except Exception as e:
-            self.pop_request()
-            raise e
-
-    def recive_message(self):
-        if time.time() - self.start_time > self.max_time:
-            raise AttributeError("out max limit")
-        data = self.detect_queue.get()
-        self.conn.sendall(data[0] + data[1] + data[2] + data[3])
-
-    #清掉要求queue避免佔用
-    def pop_request(self):
-        self.request_queue.get()
-
-#影像辨識者
-class Video_detector(Image_holder):
-    def set_conn(self, client_conn: socket.socket, queue_dict: Dict):
-        super().set_conn(client_conn, queue_dict)
-        self.detect_queue = queue_dict['detect_queue']
-
-    def run(self):
-        self.detect()
-    
-    #接收辨識結果
-    def get_detect_result(self) -> list:
-        results = self.conn.recv(2048)
-        results = eval(results.decode())
-        return results
-
-    def write_image(self, results, img):
-        if len(results) < 1:
-            return
-        #寫入檔案
-        imgpath = os.path.join("data","image","raw",str(time.time())+'.jpg')
-        cv2.imwrite(imgpath, img)
-
-    def show_image(self, img):
-        cv2.imshow('live', img)
-        cv2.waitKey(1)
-
-    #解碼
-    def data_decode(self, data):
-        t_int = struct.unpack(self.payload, data[1])[0]
-        t_float = struct.unpack(self.payload, data[2])[0]
-        t = float('{}.{}'.format(t_int, t_float))
-        img_packed = np.frombuffer(data[3], dtype = "uint8")
-        img = cv2.imdecode(img_packed, cv2.IMREAD_COLOR)
-        return (t, img)
-
-    def detect(self):
-        #傳送影像資料給辨識端
-        data = self.queue.get()
-        self.conn.sendall(data[0] + data[3])
-        #解碼
-        (t, img) = self.data_decode(data)
-        #接收辨識結果
-        results = self.get_detect_result()
-        #畫圖像
-        #圖像壓縮計算長度
-        #丟進辨識進結果queue
-        self.detect_queue.put(data)
-        #上傳資料庫
 
 #連線管理者
 class Connector():
@@ -249,7 +73,7 @@ class Connector():
         (self.conn, self.addr) = (client_conn, client_addr)
     
     #識別連線
-    def conn_identify(self) -> Holder:
+    def conn_identify(self) -> holder.Holder:
         #連線開始 先接受驗證訊息
         data = self.conn.recv(100)
         
@@ -261,11 +85,11 @@ class Connector():
         #驗證身分 錯誤的身分會引發例外中斷thread
         return get_identify_holder(identify)
 
-    def run(self, resource_queue):
+    def run(self, *shared_args):
         #識別連線
         handler = self.conn_identify()
         #處理連線
-        handler.set_conn(self.conn, resource_queue)
+        handler.set_conn(self.conn, shared_args)
         try:
             while True:
                 handler.run()
@@ -279,18 +103,20 @@ class Connector():
         self.conn.close()
         print("Client at ", self.addr , " disconnected... for", reason)
 
-def get_identify_holder(identify:str) -> Holder:
+def get_identify_holder(identify:str) -> holder.Holder:
     idd = {
-        "msg_source" : Msg_provider(),  
-        "msg_request" : Msg_reciver(),
-        "video_source" : Video_provider(),
-        "video_request" : Video_reciver(),
-        "video_detect" : Video_detector(),
-        "detect_request" : Detect_request()
+        "msg_source" : holder.Msg_provider(),  
+        "msg_request" : holder.Msg_reciver(),
+        "video_source" : holder.Video_provider(),
+        "video_request" : holder.Video_reciver(),
+        "video_detect" : holder.Video_detector(),
+        "detect_request" : holder.Detect_request()
     }
     return idd[identify]
+
 
 if __name__ == "__main__":
     mm = Server("163.25.103.111", 9987)
     mm.wait_connection()
+
     
