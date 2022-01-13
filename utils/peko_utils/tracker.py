@@ -43,6 +43,12 @@ class Tracker_manager():
         return tracking_results
 
     #取得追蹤清單
+    def get_tracker_list(self):
+        tracker_list = [] # [ [id,[[x1,... ,t], [x1,...,t], []]],  ]
+        for tracker in self.tracker_list:
+            box_list = tracker.get_box_list()
+            tracker_list.append(box_list)
+        return tracker_list
 
     #評估候選結果
     def eval_campare(self, coord, gtime):
@@ -84,19 +90,37 @@ class Tracker_manager():
             #加入已追蹤列表
             self.tracker_list.append(tracker)
         else:
+            #一個box有多個符合的tracker
             # >1 表示 可能有人重疊
             #eval_table >1 = [[5,[4,3]], [2,[1,-6]]]
             #多重比較
             # multi_eval_table row == col 找最近, 都很近=>比較方向
             # row != col 某人被某人遮擋 box可能要指派給多人
             # box_coord: [trackerid, trackerid]
-            pass
-    
+            
+            #直接分配最近的
+            min_eval = -1
+            table = []
+            for index, comparison in eval_table:
+                eval_sum = sum(comparison[0:3])
+                if min_eval == -1 or eval_sum < min_eval:
+                    min_eval = eval_sum
+                    table = (index, comparison)
+
+            #從trackerlist pop 出那個tracker
+            tracker_index = table[0] # [index, comparison]
+            tracker = self.untrack_list.pop(tracker_index)
+            print('find one tracker profit ', tracker.id)
+            #指派box
+            tracker.set_box(coord, gtime)
+            #加入已追蹤列表
+            self.tracker_list.append(tracker)
+
     #過濾比較分數
     def is_out_specific(self, comparison):
         #comparison = [右邊界偏差 上邊界偏差 左邊 下邊 方向速度]
-        if (comparison[0] > 100 and comparison[1] > 100 
-            and comparison[2] > 100 and comparison[3] > 100 and comparison[4] < 3):
+        if (comparison[0] > 30 and comparison[1] > 30
+            and comparison[2] > 30 and comparison[3] > 30 and comparison[4] < 3):
             return True
         else:
             return False
@@ -124,6 +148,12 @@ class Tracker():
     #取得最新的box
     def get_last_box(self):
         return self.box_list[-1]
+
+    def get_box_list(self): #->[id, box_list]
+        box_list = []
+        for ctime, coord in self.box_list:
+            box_list.append(coord)
+        return [self.id, box_list]
 
     #檢查有沒有在檢查點 有的話計算平均速度
 
