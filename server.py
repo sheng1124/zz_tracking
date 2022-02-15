@@ -96,6 +96,7 @@ class Connector():
         except Exception as e:
             #關閉連線
             self.close_conn(e)
+            raise e
         print(type(handler), "exit...")
     
     #關閉連線

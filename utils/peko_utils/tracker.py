@@ -1,6 +1,7 @@
 #管理追蹤者 管理並指派框給追蹤者
 #一個box至少指派一個tracker
 #一個tracker只能指派一個box
+
 class Tracker_manager():
     def __init__(self) -> None:
         self.tracker_list=[]
@@ -44,11 +45,11 @@ class Tracker_manager():
 
     #取得追蹤清單
     def get_tracker_list(self):
-        tracker_list = [] # [ [id,[[x1,... ,t], [x1,...,t], []]],  ]
-        for tracker in self.tracker_list:
-            box_list = tracker.get_box_list()
-            tracker_list.append(box_list)
-        return tracker_list
+        #tracker_list = [] # [ [id,[[x1,... ,t], [x1,...,t], []]],  ]
+        #for tracker in self.tracker_list:
+        #    box_list = tracker.get_box_list()
+        #    tracker_list.append(box_list)
+        return self.tracker_list
 
     #評估候選結果
     def eval_campare(self, coord, gtime):
@@ -154,6 +155,38 @@ class Tracker():
         for ctime, coord in self.box_list:
             box_list.append(coord)
         return [self.id, box_list]
+
+    #計算中心點位置
+    def count_center(self, coord):
+        x1, y1, x2, y2 = coord
+        return (int((x1+x2)/2), int((y1 + 19 * y2 ) / 20))
+
+    #計算兩個楨(用索引當指定哪兩個楨)之間的平均像素速度， index2的時間 要是最新的喔
+    def count_speed(self, index1, index2):
+        #取得最新的有紀錄到 tracker 的時間
+        ctime, ccoord = self.box_list[index2]
+        #取得上一個有記錄到 tracker 的時間
+        ptime, pcoord = self.box_list[index1]
+        #計算絕對距離 時間差
+        c_center_x, c_center_y = self.count_center(ccoord)
+        p_center_x, p_center_y = self.count_center(pcoord)
+        dx = c_center_x - p_center_x
+        dy = c_center_y - p_center_y
+        t = ctime - ptime
+        if t == 0:
+            return (0.0, 0.0)
+        #計算瞬間速度
+        return (dx/t, dy/t)
+
+    #取得瞬間像素速度(與前一張 frame 比)
+    def get_piv(self):
+        #-1 是最新的 -2是上一楨
+        return self.count_speed(-2, -1)
+
+    #取得平均像素速度(沒檢查點的話就是出現到現在的位置)
+    def get_pav(self):
+        #0是最初也最
+        return self.count_speed(0, -1)
 
     #檢查有沒有在檢查點 有的話計算平均速度
 
