@@ -11,18 +11,8 @@ if __name__ == '__main__':
     cam_id = 0
     cam = cv2.VideoCapture(cam_id)
 
-<<<<<<< HEAD
     source = input('enter source name\n')
     vp.set_source_name(source)
-=======
-    while True:
-        try:
-            vp.send_image_from_cam(cam)
-        except Exception as e:
-            print(e)
-            cam.release()
-            cam = cv2.VideoCapture(cam_id)
->>>>>>> c4a9048f43e4a8100c10ef78c0ab1dc26853d325
 
     while True:
         if vp.is_transport():
