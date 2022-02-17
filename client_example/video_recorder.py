@@ -49,7 +49,6 @@ class Camera():
                     continue
 
                 #用時間設定檔案夾名稱 年-月-日-小時
-                
                 dirpath = '{}-{}-{}-{}'.format(
                     localtime[-4:],
                     localtime[4:7],
@@ -58,7 +57,8 @@ class Camera():
                 dirpath = os.path.join(outputpath, 'record', dirpath)
                 if not os.path.isdir(dirpath):
                     os.makedirs(dirpath)
-                cv2.imwrite(dirpath+ str(twtime) + '.jpg', img)
+                filepath = os.path.join(dirpath, str(twtime) + '.jpg')
+                cv2.imwrite(filepath, img)
 
             except Exception as e:
                 print(e)
