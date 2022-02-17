@@ -31,7 +31,7 @@ class Camera():
             print(e)
 
     #截圖
-    def record(self):
+    def record(self, outputpath):
         while True:
             try:
                 #讀取影像
@@ -49,11 +49,13 @@ class Camera():
                     continue
 
                 #用時間設定檔案夾名稱 年-月-日-小時
-                dirpath = 'record/{}-{}-{}-{}/'.format(
+                
+                dirpath = '{}-{}-{}-{}'.format(
                     localtime[-4:],
                     localtime[4:7],
                     localtime[8:10],
                     localtime[11:13])
+                dirpath = os.path.join(outputpath, 'record', dirpath)
                 if not os.path.isdir(dirpath):
                     os.makedirs(dirpath)
                 cv2.imwrite(dirpath+ str(twtime) + '.jpg', img)
@@ -65,5 +67,5 @@ class Camera():
 
 if __name__ == '__main__':
     cam = Camera("rtsp://admin:ppcb1234@192.168.154.15:554/unicast/c7/s1/live") #640 480
-    cam.record()
+    cam.record('..')
 
