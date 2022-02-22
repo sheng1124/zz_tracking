@@ -3,8 +3,7 @@ import struct
 import time
 import numpy as np
 import cv2
-from typing import Dict
-from utils import peko_utils
+
 from utils.peko_utils import tracker
 from utils.peko_utils import manager
 import multiprocessing as mp
@@ -425,6 +424,12 @@ class Video_detector(Image_holder):
                 center = tracker.count_center(coord)
                 cv2.circle(img, center, 1, (255, 0, 0), 5)
 
+    #標註檢查點位置
+    def draw_check_area(self, img, check_area_list):
+        for x1, y1, x2, y2 in check_area_list: #[[0, 0, 1,1], [2, 1, 5,6]]
+            cv2.rectangle(img, (x1, y1), (x2, y2), (0, 0, 255), 2)
+            
+
     #標註 tracker list 資訊
     def draw_tracker_list(self, img, track_list):
         (h, w, *_) = img.shape # h 1080 w 1920
@@ -437,24 +442,29 @@ class Video_detector(Image_holder):
                 piv = tracker.get_piv()
                 #平均像素速度(沒檢查點的話就是出現到現在的位置)
                 pav = tracker.get_pav()
+                #平均速率(總距離 / 總時間)
+                avg_v = tracker.get_avg_v()
                 #在螢幕的右方標註tracker id 資訊
                 self.draw_text(img, 'id : {}'.format(id), (*mline,))
                 mline[1] += td
                 #標註速度
-                self.draw_text(img, 'avg pixel speed :', (*mline,))
+                self.draw_text(img, 'avg pixel velocity :', (*mline,))
                 mline[1] += td
                 self.draw_text(img, '{:.4}, {:.4}'.format(*pav), (*mline,))
                 mline[1] += td
-                self.draw_text(img, 'instance pixel speed :', (*mline,))
+                self.draw_text(img, 'instance pixel velocity :', (*mline,))
                 mline[1] += td
                 self.draw_text(img, '{:.4}, {:.4}'.format(*piv), (*mline,))
+                mline[1] += td
+                #標註平均速率
+                if avg_v:
+                    self.draw_text(img, 'average speed :', (*mline,))
+                    mline[1] += td
+                    self.draw_text(img, '{:.4}'.format(avg_v), (*mline,))
                 mline[1] += td * 2
-
+                
         except Exception as e:
-            print('=======================================')
             print(e)
-            print('=======================================')
-
 
     #接收辨識結果
     def get_detect_result(self) -> list:
@@ -519,7 +529,9 @@ class Video_detector(Image_holder):
         tracker_list = self.track_manager.get_tracker_list()
         #標註場景資訊
         site = self.draw_site_inf(img, t, len(tracker_list))
-        #標註路線
+        #標註檢查點
+        self.draw_check_area(img, self.track_manager.check_area_list)
+        #標註所有tracker路線
         self.draw_dot(img, tracker_list)
         #標註速度資訊(所有tracker 的資訊)
         self.draw_tracker_list(img, tracker_list)
