@@ -162,7 +162,7 @@ class Check_Point():
         self.gtime = gtime
         self.c_center = c_center
     
-    def replace(self, cp: Check_Point):
+    def replace(self, cp):
         self.id = cp.id
         self.gtime = cp.gtime
         self.c_center = cp.c_center

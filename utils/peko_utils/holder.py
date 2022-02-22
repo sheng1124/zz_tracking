@@ -5,7 +5,6 @@ import numpy as np
 import cv2
 
 from utils.peko_utils import tracker
-from utils.peko_utils import manager
 import multiprocessing as mp
 
 #Holder 必須要用 multli processing or multi threading 執行
@@ -230,6 +229,7 @@ class Video_provider(Image_holder):
         target_queue.put(data)
 
 #影像要求者
+"""
 class Video_reciver(Image_holder):
     def set_conn(self, client_conn: socket.socket, hmanager: manager.Manager, plock: mp.Lock):
         super().set_conn(client_conn, hmanager, plock)
@@ -251,6 +251,7 @@ class Video_reciver(Image_holder):
     def recive_message(self):
         data = self.queue.get()
         self.conn.sendall(data[0] + data[1] + data[2] + data[3])
+"""
 
 #影像辨識要求者
 class Detect_request(Image_holder):
