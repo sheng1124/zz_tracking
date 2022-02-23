@@ -3,7 +3,6 @@ from typing import Dict
 import socket
 import multiprocessing as mp
 from utils.peko_utils import holder
-from utils.peko_utils import manager
 
 #伺服器
 class Server():
@@ -109,7 +108,7 @@ def get_identify_holder(identify:str) -> holder.Holder:
         "msg_source" : holder.Msg_provider(),  
         "msg_request" : holder.Msg_reciver(),
         "video_source" : holder.Video_provider(),
-        "video_request" : holder.Video_reciver(),
+        #"video_request" : holder.Video_reciver(),
         "video_detect" : holder.Video_detector(),
         "detect_request" : holder.Detect_request()
     }

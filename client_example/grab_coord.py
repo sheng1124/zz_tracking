@@ -1,7 +1,9 @@
 #抓圖上某個點在 cv 的座標
 
 import cv2
-import os 
+import os
+
+import math
 
 refPt = []
 cropping = False
@@ -23,8 +25,16 @@ def click_and_crop(event, x, y, flags, param):
     elif event == cv2.EVENT_LBUTTONUP:
         refPt.append((x, y))
         cropping = False
+        #d印出點一座標
         print('p1: ', refPt[0])
         print('p2: ', refPt[1])
+        dx = abs(refPt[0][0] - refPt[1][0])
+        dy = abs(refPt[0][1] - refPt[1][1])
+        #印出兩點曼哈頓距離(dx,dy)
+        print('md_abs: ', (dx, dy))
+        #印出像素絕對距離
+        d = math.sqrt(dx*dx + dy*dy)
+        print('d: ', d)
 
 
 if __name__ == '__main__':

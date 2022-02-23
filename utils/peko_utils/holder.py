@@ -424,6 +424,12 @@ class Video_detector(Image_holder):
             for coord in box_list:
                 center = tracker.count_center(coord)
                 cv2.circle(img, center, 1, (255, 0, 0), 5)
+            
+            #畫出經過檢查點的點
+            passed_point_list = tracker.get_passed_point()
+            for p in passed_point_list:
+                cv2.circle(img, p, 1, (0, 0, 255), 5)
+
 
     #標註檢查點位置
     def draw_check_area(self, img, check_area_list):
@@ -458,10 +464,10 @@ class Video_detector(Image_holder):
                 self.draw_text(img, '{:.4}, {:.4}'.format(*piv), (*mline,))
                 mline[1] += td
                 #標註平均速率
-                if avg_v:
+                if avg_v > 0:
                     self.draw_text(img, 'average speed :', (*mline,))
                     mline[1] += td
-                    self.draw_text(img, '{:.4}'.format(avg_v), (*mline,))
+                    self.draw_text(img, '{:.4} m/s'.format(avg_v), (*mline,))
                 mline[1] += td * 2
                 
         except Exception as e:

@@ -2,6 +2,9 @@
 #一個box至少指派一個tracker
 #一個tracker只能指派一個box
 
+import math
+
+
 class Tracker_manager():
     def __init__(self) -> None:
         self.tracker_list=[]
@@ -9,11 +12,11 @@ class Tracker_manager():
         self.used_id = 0
         #向資料庫取的場域資訊
         #檢查點設定
-        check_area_list = [[58, 426, 91, 449], [572, 425, 621, 460]]
+        check_area_list = [[30, 412, 133, 477], [545, 422, 636, 477]]
         self.set_check_area(check_area_list)
 
         #設定檢查點之間的實際距離[ [0 1], [1 0] ]
-        distance_matrix_list = [[0, 2.238, 2.238, 0]]
+        distance_matrix_list = [0, 2.238, 565.107, 0]
         self.set_distance_matrix(distance_matrix_list)
     
     #設定檢查點區域
@@ -43,7 +46,7 @@ class Tracker_manager():
         h, w = int(shape[0]), int(shape[1])
         for box in results: 
             #ex: (x1, y1, x2, y2) = (int(box[0] * w), int(box[1] * h), int(box[2] * w), int(box[3] * h))
-            print('evaluate', box, 'time', gtime)
+            #print('evaluate', box, 'time', gtime)
             [x1, y1, x2, y2] = (int(box[0] * w), int(box[1] * h), int(box[2] * w), int(box[3] * h))
             self.eval_campare([x1, y1, x2, y2], gtime)
         #有重疊的情況(一個box有兩個適合的tracker) 需要多重比較
@@ -82,11 +85,11 @@ class Tracker_manager():
         eval_table = []
         for i in range(len(self.untrack_list)):
             tracker = self.untrack_list[i]
-            print('tracker:', tracker.id, ' compare with ', coord)
+            #print('tracker:', tracker.id, ' compare with ', coord)
             comparison = tracker.campare_coord(coord, gtime)
-            print('comparison', comparison)
+            #print('comparison', comparison)
             eval_table.append([i, comparison])
-        print('eval table = ', eval_table)
+        #print('eval table = ', eval_table)
         #過濾分數 過濾偏差>30?>15 時間差 > 3秒        
         new_eval_table = []
         for index, comparison in eval_table:
@@ -94,7 +97,7 @@ class Tracker_manager():
                 #沒超過規格要保留
                 new_eval_table.append([index, comparison])
         eval_table = new_eval_table
-        print('new table=', eval_table)
+        #print('new table=', eval_table)
         #指派id給tracker
         if len(eval_table) == 0:
             #如果 =0 建立新的 Tracker
@@ -114,7 +117,7 @@ class Tracker_manager():
             #從trackerlist pop 出那個tracker
             tracker_index = eval_table[0][0] # [ [index, comparison],  ]
             tracker = self.untrack_list.pop(tracker_index)
-            print('find one tracker can', tracker.id)
+            #print('find one tracker can', tracker.id)
             #指派box
             tracker.set_box(coord, gtime)
             #加入已追蹤列表
@@ -140,7 +143,7 @@ class Tracker_manager():
             #從trackerlist pop 出那個tracker
             tracker_index = table[0] # [index, comparison]
             tracker = self.untrack_list.pop(tracker_index)
-            print('find one tracker profit ', tracker.id)
+            #print('find one tracker profit ', tracker.id)
             #指派box
             tracker.set_box(coord, gtime)
             #加入已追蹤列表
@@ -196,6 +199,9 @@ class Tracker():
     #設定檢查點之間的距離矩陣
     def set_distance_matrix(self, distance_matrix):
         self.distance_matrix = distance_matrix
+        print()
+        print(self.distance_matrix)
+        print()
 
     #在哪個檢查點裡面
     def get_checkarea(self, c_center):
@@ -272,28 +278,47 @@ class Tracker():
         if len(self.check_area_list) < 2:
             return 0.0
         gtime, coord = self.get_last_box()
-        return self.count_avg(gtime, coord)
+        avg_v = self.count_avg(gtime, coord)
+        if avg_v:
+            #有計算出平均速度
+            self.avg_v = avg_v
+        return self.avg_v
 
     #檢查有沒有在檢查點 有的話計算平均速度
     def count_avg(self, gtime, coord):
         (t, d, avg) = (0.0, 0.0, 0.0)
         #看這個座標有沒有在檢查點裡面
         c_center = self.count_center(coord)
-        check_point_now = self.get_checkarea(c_center)
-        print('check_point_now:', check_point_now)
-        if check_point_now != -1 and check_point_now != self.check_point:
+        check_point_now_id = self.get_checkarea(c_center)
+        print('track id=',self.id, 'check_point_now:', check_point_now_id)
+        if check_point_now_id != -1 and check_point_now_id != self.check_point.id:
             #經過新的檢查點，可能是第一次經過，不計算平均速度
-            if self.check_point != -1:
+            if self.check_point.id != -1:
                 #有經過上上個檢查點，不是第一次，計算平均速度
                 t = gtime - self.check_point.gtime
-                d = self.distance_matrix[self.check_point.id][check_point_now]
+                #真實距離
+                gd = self.distance_matrix[self.check_point.id][check_point_now_id]
+                #像素距離
+                pd = self.distance_matrix[check_point_now_id][self.check_point.id]
+                if self.check_point.id > check_point_now_id:
+                    gd, pd = pd, gd
+                #距離像素比
+                dr = gd / pd
+                d = dr * self.count_abs_pd(c_center, self.check_point.c_center)
                 avg = d/t
-            
+
             #檢查點更新 -1 -> 0(第一次) or 1 -> 2(第二次以上)， 紀錄經過檢查點的時間
             self.last_check_point.replace(self.check_point)
-            self.check_point.reset(check_point_now, gtime, c_center)
+            self.check_point.reset(check_point_now_id, gtime, c_center)
         return avg
     
+    #計算兩點像素絕對距離
+    def count_abs_pd(self, p1, p2):
+        x1, y1 = p1
+        x2, y2 = p2
+        dx = x2 - x1
+        dy = y2 - y1
+        return math.sqrt(dx * dx + dy * dy)
 
     #儲存框,足跡,速度
     def set_box(self, coord, gtime):
