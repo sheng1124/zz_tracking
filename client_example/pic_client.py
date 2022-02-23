@@ -42,8 +42,8 @@ if __name__ == '__main__':
 
     pictures = get_pictures(pic_floder_list)
     print('ready to send time = ', time.asctime(time.localtime()))
-    vp.response()
     while True:
+        print('test con')
         if vp.is_transport():
             #伺服器允許傳送
             try:

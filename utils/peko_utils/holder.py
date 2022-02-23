@@ -41,6 +41,7 @@ class Holder():
     #檢查有沒有斷線
     def is_socket_closed(self) -> bool:
         try:
+            print(type(self), 'is closed?')
             data = self.conn.recv(16)
             if len(data) == 0:
                 return True
@@ -195,6 +196,7 @@ class Video_provider(Image_holder):
         #沒有向來源要求的客戶端 #要求端要設定佇列給來源端(申請)才會傳資料
         except (TypeError, AttributeError):
             #傳送不允許傳輸控制碼
+            print('provider reject to send')
             self.conn.sendall(b'0')
             #取得回應，若沒回應即關閉連線
             if self.is_socket_closed():
@@ -209,13 +211,14 @@ class Video_provider(Image_holder):
 
     def push_image(self, target_queue:mp.Queue):
         if target_queue is None:
+            #沒有指定的目標佇列
             raise TypeError('target_queue is none')
         
         #傳送允許控制碼
         print('provider ready to send confirm')
         self.conn.sendall(b'1')
 
-        #解析影像長度
+        #開始接受遠端伺服器資料，解析影像長度
         (img_size, buffer, packed_img_size) = self.img_len_decode(self.conn)
 
         #解析時間

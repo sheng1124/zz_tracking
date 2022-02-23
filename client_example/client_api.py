@@ -30,15 +30,19 @@ class Client():
 
     #是否可傳輸資料
     def is_transport(self):
+        print('is_transport')
         con_code = self.remote_server.recv(1)
         if con_code == b'0':
+            print('cant transport')
             return False
         else:
+            print('transport')
             return True
 
     #回應伺服器
     def response(self):
         self.remote_server.sendall(b'1')
+        print('response server')
 
 
 #影像相關客戶端
