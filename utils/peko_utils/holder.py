@@ -3,6 +3,7 @@ import struct
 import time
 import numpy as np
 import cv2
+import os
 
 from utils.peko_utils import tracker
 import multiprocessing as mp
@@ -344,12 +345,14 @@ class Detect_request(Image_holder):
         self.print_shared_args()
 
 #影像辨識者
+#從辨識端傳過來的資料都要經過這個物件來處理
 class Video_detector(Image_holder):
     def set_conn(self, client_conn: socket.socket, shared_args):
         super().set_conn(client_conn, shared_args)
         self.set_detect_input_queue() 
         self.track_manager = tracker.Tracker_manager()
         self.encode_parm=[int(cv2.IMWRITE_JPEG_QUALITY), 100]
+        self.saved_gtime = 0.0
 
     #新增辨識機
     def add_detector(self):
@@ -392,16 +395,22 @@ class Video_detector(Image_holder):
     def draw_text(self, img, text, coord):
         cv2.putText(img, text, coord, cv2.FONT_HERSHEY_SIMPLEX, 0.7, (50, 50, 50), 2)
 
-    #畫場景資訊
-    def draw_site_inf(self, img, t, count_people):
-        (h, w, *_) = img.shape
-        #畫地點
+    #取得正在辨識的場域名稱
+    def get_site(self):
+        site = 'None'
         site_id = self.detect_output_list[self.detector_id]
         try:
             site = self.request_list[site_id]
         except Exception:
-            #如果要求離線會 error
-            site = 'None'
+            # request handler 離線會沒有 request_list 的索引 存取會 error
+            print('request_list no', site_id, 'index')
+        return site
+        
+    #畫場景資訊
+    def draw_site_inf(self, img, t, count_people):
+        (h, w, *_) = img.shape
+        #畫地點
+        site = self.get_site()
         sitestr = 'On Place={}'.format(site)
         self.draw_text(img, sitestr, ((int(w * 0.0104)), int(h * 0.047)))
         
@@ -479,13 +488,25 @@ class Video_detector(Image_holder):
         results = eval(results.decode())
         return results
 
-    def write_image(self, site, img):
-        import os
-        folder = os.path.join("data","image","raw",site)
+    #存圖
+    def write_image(self, img_type, site, img):
+        folder = os.path.join("data","image", img_type, site)
         imgpath = os.path.join(folder, str(time.time())+'.jpg')
         if not os.path.exists(folder):
             os.mkdir(folder)
         cv2.imwrite(imgpath, img)
+    
+    #儲存原始影像
+    def save_raw_image(self, site, gtime, dresult, img):
+        #如果有辨識到人存圖
+        if len(dresult) > 0:
+            self.saved_gtime = gtime
+            self.write_image("raw", site, img)
+            return
+
+        #沒辨識到人但是前7秒有辨識到人就存圖
+        if gtime - self.saved_gtime < 7.0:
+            self.write_image("raw", site, img)
 
     def show_image(self, img):
         cv2.imshow('live', img)
@@ -512,16 +533,16 @@ class Video_detector(Image_holder):
     def detect(self):
         #傳送影像資料給辨識端
         data = self.input_queue.get()
-        self.conn.sendall(data[0] + data[3])
+        self.conn.sendall(data[0] + data[3]) #辨識機只要圖片不用時間資料
         newdata = [data[0], data[1], data[2], data[3]]
-        
         #解碼
         (t, img) = self.data_decode(data)
         
         #存原始影像圖?
         #接收辨識結果
         results = self.get_detect_result()
-        
+        ss = self.get_site()
+        self.save_raw_image(ss, t, results, img)
         #追蹤 bounding box
         self.track_manager.input_boxs(results, t, img.shape)
         
@@ -545,8 +566,7 @@ class Video_detector(Image_holder):
         #新圖像壓縮計算長度
         (size_img_pack, img_pack) = self.data_encode(img)
         newdata[0], newdata[3] = size_img_pack, img_pack
-
-        self.write_image(site, img)
+        #self.write_image("detect", site, img)
         
         #丟進queue用來傳送資料
         output_queue = self.get_detect_output_queue()
