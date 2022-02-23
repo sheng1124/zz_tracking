@@ -89,11 +89,14 @@ class Video_povider_client(Video_client):
         self.send_image(img, t)
 
     #傳送路徑的照片
-    def send_image_by_path(self, filepath):
+    def send_image_by_path(self, filepath, ftime:float):
+        print(filepath)
+        print(type(ftime), ftime)
         img = cv2.imread(filepath)
-        t = os.path.basename(filepath)
-        t = float(t[:-4])
-        self.send_image(img, t)
+        if type(ftime) != type(0.0) or ftime <= 0.0:
+            self.send_image(img, time.time()) 
+        else:
+            self.send_image(img, ftime)
 
     #傳送圖片
     def send_image(self, img, t:float):
