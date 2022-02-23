@@ -3,9 +3,8 @@ import struct
 import time
 import numpy as np
 import cv2
-from typing import Dict
+
 from utils.peko_utils import tracker
-from utils.peko_utils import manager
 import multiprocessing as mp
 
 #Holder 必須要用 multli processing or multi threading 執行
@@ -230,6 +229,7 @@ class Video_provider(Image_holder):
         target_queue.put(data)
 
 #影像要求者
+"""
 class Video_reciver(Image_holder):
     def set_conn(self, client_conn: socket.socket, hmanager: manager.Manager, plock: mp.Lock):
         super().set_conn(client_conn, hmanager, plock)
@@ -251,6 +251,7 @@ class Video_reciver(Image_holder):
     def recive_message(self):
         data = self.queue.get()
         self.conn.sendall(data[0] + data[1] + data[2] + data[3])
+"""
 
 #影像辨識要求者
 class Detect_request(Image_holder):
@@ -387,17 +388,90 @@ class Video_detector(Image_holder):
             cv2.rectangle(img, (x1, y1), (x2, y2), (255, 0, 0), 2)
             cv2.putText(img, str(id) , (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255,0,0), 2)
 
-    #打點畫人數
-    def draw_dot(self, img, tracker_list):
-        mess = 'count people: {}'.format(len(tracker_list))
-        cv2.putText(img, mess , (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0,255,255), 2)
-        for tracker in tracker_list:
-            #tracker = [id, [x1,x2...,t]]
-            id, box_list = tracker
-            for coord in box_list:
-                x1, y1, x2, y2 = coord
-                cv2.circle(img, (int((x1+x2)/2), int((y1+y2)/2)), 1, (255, 0, 0), 1)
+    #寫文字
+    def draw_text(self, img, text, coord):
+        cv2.putText(img, text, coord, cv2.FONT_HERSHEY_SIMPLEX, 0.7, (50, 50, 50), 2)
 
+    #畫場景資訊
+    def draw_site_inf(self, img, t, count_people):
+        (h, w, *_) = img.shape
+        #畫地點
+        site_id = self.detect_output_list[self.detector_id]
+        try:
+            site = self.request_list[site_id]
+        except Exception:
+            #如果要求離線會 error
+            site = 'None'
+        sitestr = 'On Place={}'.format(site)
+        self.draw_text(img, sitestr, ((int(w * 0.0104)), int(h * 0.047)))
+        
+        #畫時間
+        (y, M, d, hr, m, s, *_) = time.localtime(t)
+        dateti = 'On Time={}/{}/{}T{}:{}:{}'.format(y, M, d, hr, m, s)
+        self.draw_text(img, dateti, ((int(w * 0.0104)), int(h * 0.094)))
+
+        #畫人數
+        cp = 'Count People={}'.format(count_people)
+        self.draw_text(img, cp, ((int(w * 0.0104)), int(h * 0.141)))
+
+        return site
+
+    #打點
+    def draw_dot(self, img, tracker_list):
+        for tracker in tracker_list:
+            #取的tracker過去所有足跡
+            id, box_list = tracker.get_box_list()
+            for coord in box_list:
+                center = tracker.count_center(coord)
+                cv2.circle(img, center, 1, (255, 0, 0), 5)
+            
+            #畫出經過檢查點的點
+            passed_point_list = tracker.get_passed_point()
+            for p in passed_point_list:
+                cv2.circle(img, p, 1, (0, 0, 255), 5)
+
+
+    #標註檢查點位置
+    def draw_check_area(self, img, check_area_list):
+        for x1, y1, x2, y2 in check_area_list: #[[0, 0, 1,1], [2, 1, 5,6]]
+            cv2.rectangle(img, (x1, y1), (x2, y2), (0, 0, 255), 2)
+            
+
+    #標註 tracker list 資訊
+    def draw_tracker_list(self, img, track_list):
+        (h, w, *_) = img.shape # h 1080 w 1920
+        mline = [int(w * 0.623), int(h * 0.141)] #標註資訊位置(cv2畫筆位置)
+        td = int(h * 0.047) #行距
+        try:
+            for tracker in track_list:
+                id = tracker.id
+                #瞬間像素速度(與前一張 frame 比)
+                piv = tracker.get_piv()
+                #平均像素速度(沒檢查點的話就是出現到現在的位置)
+                pav = tracker.get_pav()
+                #平均速率(總距離 / 總時間)
+                avg_v = tracker.get_avg_v()
+                #在螢幕的右方標註tracker id 資訊
+                self.draw_text(img, 'id : {}'.format(id), (*mline,))
+                mline[1] += td
+                #標註速度
+                self.draw_text(img, 'avg pixel velocity :', (*mline,))
+                mline[1] += td
+                self.draw_text(img, '{:.4}, {:.4}'.format(*pav), (*mline,))
+                mline[1] += td
+                self.draw_text(img, 'instance pixel velocity :', (*mline,))
+                mline[1] += td
+                self.draw_text(img, '{:.4}, {:.4}'.format(*piv), (*mline,))
+                mline[1] += td
+                #標註平均速率
+                if avg_v > 0:
+                    self.draw_text(img, 'average speed :', (*mline,))
+                    mline[1] += td
+                    self.draw_text(img, '{:.4} m/s'.format(avg_v), (*mline,))
+                mline[1] += td * 2
+                
+        except Exception as e:
+            print(e)
 
     #接收辨識結果
     def get_detect_result(self) -> list:
@@ -405,12 +479,12 @@ class Video_detector(Image_holder):
         results = eval(results.decode())
         return results
 
-    def write_image(self, img):
-        #if len(results) < 1:
-        #    return
-        #寫入檔案
+    def write_image(self, site, img):
         import os
-        imgpath = os.path.join("data","image","raw",str(time.time())+'.jpg')
+        folder = os.path.join("data","image","raw",site)
+        imgpath = os.path.join(folder, str(time.time())+'.jpg')
+        if not os.path.exists(folder):
+            os.mkdir(folder)
         cv2.imwrite(imgpath, img)
 
     def show_image(self, img):
@@ -434,34 +508,47 @@ class Video_detector(Image_holder):
         size_en = struct.pack(self.payload, img_encode_byte_size)
         return size_en, img_encode_byte
 
+
     def detect(self):
         #傳送影像資料給辨識端
         data = self.input_queue.get()
         self.conn.sendall(data[0] + data[3])
         newdata = [data[0], data[1], data[2], data[3]]
+        
         #解碼
         (t, img) = self.data_decode(data)
+        
         #存原始影像圖?
         #接收辨識結果
         results = self.get_detect_result()
+        
         #追蹤 bounding box
         self.track_manager.input_boxs(results, t, img.shape)
+        
         #取得所有box的追蹤資訊(by time)
         tracking_results = self.track_manager.get_tracking_result(t)
         #取得追蹤清單
         #寫出有速度資訊的追蹤者並標記追蹤id
+
         #依據追蹤資訊畫圖 標記id 中心點 足跡
         self.draw_frame(img, tracking_results)
 
         tracker_list = self.track_manager.get_tracker_list()
+        #標註場景資訊
+        site = self.draw_site_inf(img, t, len(tracker_list))
+        #標註檢查點
+        self.draw_check_area(img, self.track_manager.check_area_list)
+        #標註所有tracker路線
         self.draw_dot(img, tracker_list)
-        if len(results) > 0:
-            #圖像壓縮計算長度
-            (size_img_pack, img_pack) = self.data_encode(img)
-            newdata[0], newdata[3] = size_img_pack, img_pack
-        self.write_image(img)
+        #標註速度資訊(所有tracker 的資訊)
+        self.draw_tracker_list(img, tracker_list)
+        #新圖像壓縮計算長度
+        (size_img_pack, img_pack) = self.data_encode(img)
+        newdata[0], newdata[3] = size_img_pack, img_pack
+
+        self.write_image(site, img)
         
-        #丟進辨識結果queue
+        #丟進queue用來傳送資料
         output_queue = self.get_detect_output_queue()
         if output_queue is not None:
             output_queue.put(newdata)
