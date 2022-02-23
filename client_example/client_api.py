@@ -10,6 +10,8 @@ class Client():
         (self.remote_ip, self.remote_port) = (remote_ip, remote_port)
         #遠端伺服器串接 
         self.remote_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.remote_server.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, True)
+        self.remote_server.ioctl(socket.SIO_KEEPALIVE_VALS, (1, 60000, 30000))
         self.client_name = client_name
     
     #連線到遠端伺服器
