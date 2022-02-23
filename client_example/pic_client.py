@@ -49,6 +49,7 @@ if __name__ == '__main__':
             try:
                 filepath, ftime = next(pictures)
                 vp.send_image_by_path(filepath, ftime)
+                print('send image', filepath)
             except StopIteration:
                 endtime = time.time()
                 print('end to send, time = ', time.asctime(time.localtime(endtime)))

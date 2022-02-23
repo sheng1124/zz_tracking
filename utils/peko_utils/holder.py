@@ -220,10 +220,11 @@ class Video_provider(Image_holder):
 
         #開始接受遠端伺服器資料，解析影像長度
         (img_size, buffer, packed_img_size) = self.img_len_decode(self.conn)
+        print('img_size=', img_size)
 
         #解析時間
         (t_int, t_float, buffer, packed_t_int, packed_t_float) = self.img_time_decode(self.conn, buffer)
-        
+        print('t_float=', t_float)
         #接收壓縮資料
         (packed_img, buffer) = self.get_packed_img(self.conn, img_size, buffer)
         
