@@ -36,7 +36,7 @@ class Client():
             print('cant transport')
             return False
         else:
-            print('transport')
+            print('transport code=', con_code)
             return True
 
     #回應伺服器
@@ -94,14 +94,17 @@ class Video_povider_client(Video_client):
 
     #傳送路徑的照片
     def send_image_by_path(self, filepath, ftime:float):
-        #print(filepath)
+        
         #print(type(ftime), ftime)
         img = cv2.imread(filepath)
         if type(ftime) != type(0.0) or ftime <= 0.0:
-            self.send_image(img, time.time()) 
+            print('send by 1', filepath, ftime)
+            self.send_image(img, time.time())
+            
         else:
+            print('send by 2', filepath, ftime)
             self.send_image(img, ftime)
-        time.sleep(1)
+            
 
     #傳送圖片
     def send_image(self, img, t:float):
@@ -119,4 +122,5 @@ class Video_povider_client(Video_client):
             packed += struct.pack(self.payload, int_t) + struct.pack(self.payload, float_t)
         #傳送給伺服器
         packed += img_encode_byte
+        print('ready to send')
         self.remote_server.sendall(packed)

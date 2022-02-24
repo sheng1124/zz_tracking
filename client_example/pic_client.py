@@ -43,13 +43,12 @@ if __name__ == '__main__':
     pictures = get_pictures(pic_floder_list)
     print('ready to send time = ', time.asctime(time.localtime()))
     while True:
-        print('test con')
         if vp.is_transport():
             #伺服器允許傳送
             try:
                 filepath, ftime = next(pictures)
                 vp.send_image_by_path(filepath, ftime)
-                print('send image', filepath)
+                print('send image finish', filepath)
             except StopIteration:
                 endtime = time.time()
                 print('end to send, time = ', time.asctime(time.localtime(endtime)))
