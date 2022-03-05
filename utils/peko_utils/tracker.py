@@ -290,7 +290,7 @@ class Tracker():
         #看這個座標有沒有在檢查點裡面
         c_center = self.count_center(coord)
         check_point_now_id = self.get_checkarea(c_center)
-        print('track id=',self.id, 'check_point_now:', check_point_now_id)
+        #print('track id=',self.id, 'check_point_now:', check_point_now_id)
         if check_point_now_id != -1 and check_point_now_id != self.check_point.id:
             #經過新的檢查點，可能是第一次經過，不計算平均速度
             if self.check_point.id != -1:

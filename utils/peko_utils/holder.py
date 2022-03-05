@@ -215,8 +215,9 @@ class Video_provider(Image_holder):
             raise TypeError('target_queue is none')
         
         #傳送允許控制碼
-        print('provider ready to send confirm')
+        print('provider ready to send confirmxx')
         self.conn.sendall(b'1')
+        print('send all')
 
         #開始接受遠端伺服器資料，解析影像長度
         (img_size, buffer, packed_img_size) = self.img_len_decode(self.conn)
