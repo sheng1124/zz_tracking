@@ -17,6 +17,7 @@ def get_pictures(pic_floder_list):
     for pic_floder in pic_floder_list:
         if not os.path.isdir(pic_floder):
             continue
+        print('start send images from', pic_floder, time.asctime(time.localtime(time.time())))
         #取的資料夾下所有檔案
         fp_list = os.listdir(pic_floder)
         #整理文件排序

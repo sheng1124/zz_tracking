@@ -74,15 +74,11 @@ class Video_povider_client(Video_client):
 
     #傳送路徑的照片
     def send_image_by_path(self, filepath, ftime:float):
-        
         #print(type(ftime), ftime)
         img = cv2.imread(filepath)
         if type(ftime) != type(0.0) or ftime <= 0.0:
-            print('send by 1', filepath, ftime)
             self.send_image(img, time.time())
-            
         else:
-            print('send by 2', filepath, ftime)
             self.send_image(img, ftime)
             
 
@@ -103,4 +99,4 @@ class Video_povider_client(Video_client):
         #傳送給伺服器
         packed += img_encode_byte
         self.remote_server.sendall(packed)
-        print('send time = ', t)
+        #print('send time = ', t)
