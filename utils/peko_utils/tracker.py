@@ -248,10 +248,13 @@ class Tracker():
 
     #計算兩個楨(用索引當指定哪兩個楨)之間的平均像素速度， index2的時間 要是最新的喔
     def count_speed(self, index1, index2):
-        #取得最新的有紀錄到 tracker 的時間
-        ctime, ccoord = self.box_list[index2]
-        #取得上一個有記錄到 tracker 的時間
-        ptime, pcoord = self.box_list[index1]
+        try:
+            #取得最新的有紀錄到 tracker 的時間
+            ctime, ccoord = self.box_list[index2]
+            #取得上一個有記錄到 tracker 的時間
+            ptime, pcoord = self.box_list[index1]
+        except IndexError:
+            return (0.0, 0.0)
         #計算絕對距離 時間差
         c_center_x, c_center_y = self.count_center(ccoord)
         p_center_x, p_center_y = self.count_center(pcoord)

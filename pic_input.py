@@ -12,11 +12,12 @@ def get_pic_floder_list():
         pic_floder = input('輸入資料夾路徑 輸入q 離開\n')
     return pic_floder_list
 
-#生成圖片路徑和時間
-def get_pictures(pic_floder_list):
+#生成圖片路徑和時間，send_interval每隔幾張傳一次 20 就是每隔20張圖傳一張 1 全部傳
+def get_pictures(pic_floder_list, send_interval=1):
     for pic_floder in pic_floder_list:
         if not os.path.isdir(pic_floder):
             continue
+        i = 0
         print('start send images from', pic_floder, time.asctime(time.localtime(time.time())))
         #取的資料夾下所有檔案
         fp_list = os.listdir(pic_floder)
@@ -24,10 +25,11 @@ def get_pictures(pic_floder_list):
         fp_list = sorted(fp_list, key = lambda id:float(id[:-4]))
         for filename in fp_list:
             #解析所有圖檔路徑並解析時間
-            if filename[-4:] in ('.jpg', '.png'):
+            if filename[-4:] in ('.jpg', '.png') and not (i % send_interval):
                 filepath = os.path.join(pic_floder, filename)
                 ftime = float(filename[:-4])
                 yield (filepath, ftime)
+            i+=1
 
 if __name__ == '__main__':
     vp = Video_povider_client("163.25.103.111", 9987)

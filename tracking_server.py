@@ -251,29 +251,34 @@ class Post_producer():
         self.recv_size = 4096
 
     def run(self, d_result_queue:mp.Queue, output_queue:mp.Queue):
-        while True:
-            #取得辨識結果
-            (img, gtime, self.site, results) = d_result_queue.get()
-            #儲存原始影像
-            self.save_raw_image(img, gtime, results) # 5e-3
-            #追蹤 bounding box
-            self.track_manager.input_boxs(results, gtime, img.shape)
-            #取得所有box的追蹤資訊(by time)
-            tracking_results = self.track_manager.get_tracking_result(gtime) #7e-4
-            #依據追蹤資訊畫圖 標記id 中心點 足跡 寫出有速度資訊的追蹤者並標記追蹤id
-            self.draw_frame(img, tracking_results) #5e-4
-            #取得追蹤清單
-            tracker_list = self.track_manager.get_tracker_list()
-            #標註場景資訊 標註人數
-            self.draw_site_inf(img, gtime, len(tracker_list))
-            #標註檢查點
-            self.draw_check_area(img, self.track_manager.check_area_list)
-            #標註所有tracker路線
-            self.draw_dot(img, tracker_list)
-            #標註速度資訊(所有tracker 的資訊)
-            self.draw_tracker_list(img, tracker_list) #7e-4
-            #把影像結果傳到輸出佇列
-            output_queue.put(img)
+        try:
+            while True:
+                #取得辨識結果
+                (img, gtime, self.site, results) = d_result_queue.get()
+                #儲存原始影像
+                self.save_raw_image(img, gtime, results) # 5e-3
+                #追蹤 bounding box
+                self.track_manager.input_boxs(results, gtime, img.shape)
+                #取得所有box的追蹤資訊(by time)
+                tracking_results = self.track_manager.get_tracking_result(gtime) #7e-4
+                #依據追蹤資訊畫圖 標記id 中心點 足跡 寫出有速度資訊的追蹤者並標記追蹤id
+                self.draw_frame(img, tracking_results) #5e-4
+                #取得追蹤清單
+                tracker_list = self.track_manager.get_tracker_list()
+                #標註場景資訊 標註人數
+                self.draw_site_inf(img, gtime, len(tracker_list))
+                #標註檢查點
+                self.draw_check_area(img, self.track_manager.check_area_list)
+                #標註所有tracker路線
+                self.draw_dot(img, tracker_list)
+                #標註速度資訊(所有tracker 的資訊)
+                self.draw_tracker_list(img, tracker_list) #7e-4
+                #把影像結果傳到輸出佇列
+                output_queue.put(img)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            print(e)
 
 
     #畫人框
@@ -328,36 +333,32 @@ class Post_producer():
         (h, w, *_) = img.shape # h 1080 w 1920
         mline = [int(w * 0.623), int(h * 0.141)] #標註資訊位置(cv2畫筆位置)
         td = int(h * 0.047) #行距
-        try:
-            for tracker in track_list:
-                id = tracker.id
-                #瞬間像素速度(與前一張 frame 比)
-                piv = tracker.get_piv()
-                #平均像素速度(沒檢查點的話就是出現到現在的位置)
-                pav = tracker.get_pav()
-                #平均速率(總距離 / 總時間)
-                avg_v = tracker.get_avg_v()
-                #在螢幕的右方標註tracker id 資訊
-                self.draw_text(img, 'id : {}'.format(id), (*mline,))
+        for tracker in track_list:
+            id = tracker.id
+            #瞬間像素速度(與前一張 frame 比)
+            piv = tracker.get_piv()
+            #平均像素速度(沒檢查點的話就是出現到現在的位置)
+            pav = tracker.get_pav()
+            #平均速率(總距離 / 總時間)
+            avg_v = tracker.get_avg_v()
+            #在螢幕的右方標註tracker id 資訊
+            self.draw_text(img, 'id : {}'.format(id), (*mline,))
+            mline[1] += td
+            #標註速度
+            self.draw_text(img, 'avg pixel velocity :', (*mline,))
+            mline[1] += td
+            self.draw_text(img, '{:.4}, {:.4}'.format(*pav), (*mline,))
+            mline[1] += td
+            self.draw_text(img, 'instance pixel velocity :', (*mline,))
+            mline[1] += td
+            self.draw_text(img, '{:.4}, {:.4}'.format(*piv), (*mline,))
+            mline[1] += td
+            #標註平均速率
+            if avg_v > 0:
+                self.draw_text(img, 'average speed :', (*mline,))
                 mline[1] += td
-                #標註速度
-                self.draw_text(img, 'avg pixel velocity :', (*mline,))
-                mline[1] += td
-                self.draw_text(img, '{:.4}, {:.4}'.format(*pav), (*mline,))
-                mline[1] += td
-                self.draw_text(img, 'instance pixel velocity :', (*mline,))
-                mline[1] += td
-                self.draw_text(img, '{:.4}, {:.4}'.format(*piv), (*mline,))
-                mline[1] += td
-                #標註平均速率
-                if avg_v > 0:
-                    self.draw_text(img, 'average speed :', (*mline,))
-                    mline[1] += td
-                    self.draw_text(img, '{:.4} m/s'.format(avg_v), (*mline,))
-                mline[1] += td * 2
-                
-        except Exception as e:
-            print(e)
+                self.draw_text(img, '{:.4} m/s'.format(avg_v), (*mline,))
+            mline[1] += td * 2
 
     #接收辨識結果
     def get_detect_result(self) -> list:
