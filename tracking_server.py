@@ -173,7 +173,7 @@ class Image_source():
         except Exception as e:
             #關閉連線
             self.close_conn(e)
-            raise e
+            #raise e
         print(self.addr, "exit...")
     
     #關閉連線
