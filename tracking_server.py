@@ -301,8 +301,8 @@ class Post_producer():
         self.draw_text(img, sitestr, ((int(w * 0.0104)), int(h * 0.047)))
         
         #畫時間
-        (y, m, d, hr, m, s, *_) = time.localtime(t)
-        dateti = 'On Time={}/{}/{}T{}:{}:{}'.format(y, m, d, hr, m, s)
+        (y, ms, d, hr, m, s, *_) = time.localtime(t)
+        dateti = 'On Time={}/{}/{}T{}:{}:{}'.format(y, ms, d, hr, m, s)
         self.draw_text(img, dateti, ((int(w * 0.0104)), int(h * 0.094)))
 
         #畫人數
@@ -367,9 +367,9 @@ class Post_producer():
         return results
 
     #存圖
-    def write_image(self, img_type, img):
+    def write_image(self, img_type, img, gtime):
         folder = os.path.join("data","image", img_type, self.site)
-        imgpath = os.path.join(folder, str(time.time())+'.jpg')
+        imgpath = os.path.join(folder, str(gtime)+'.jpg')
         if not os.path.exists(folder):
             os.mkdir(folder)
         cv2.imwrite(imgpath, img)
@@ -379,12 +379,12 @@ class Post_producer():
         #如果有辨識到人存圖
         if len(dresult) > 0:
             self.saved_gtime = gtime
-            self.write_image("raw", img)
+            self.write_image("raw", img, gtime)
             return
 
-        #沒辨識到人但是前7秒有辨識到人就存圖
-        if gtime - self.saved_gtime < 7.0:
-            self.write_image("raw", img)
+        #沒辨識到人但是前3秒有辨識到人就存圖
+        if gtime - self.saved_gtime < 3.0:
+            self.write_image("raw", img, gtime)
 
 
 if __name__ == "__main__":

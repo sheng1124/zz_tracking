@@ -81,5 +81,8 @@ if __name__ == '__main__':
         #手動輸入時間
         time_set = input_time()
     
+    for e in time_set:
+        print(e)
+    
     #複製符合時間的文件到新資料夾
     copy_file(time_set)
