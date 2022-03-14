@@ -3,22 +3,64 @@
 #一個tracker只能指派一個box
 
 import math
-
+from utils.peko_utils import sop
 
 class Tracker_manager():
     def __init__(self) -> None:
         self.tracker_list=[]
         self.untrack_list = []
+        self.check_area_list = []
+        self.distance_matrix = []
         self.used_id = 0
-        #向資料庫取的場域資訊
+        self.site = ''
+        #self.set_database(db_name)
+
+    #設定資料庫
+    def set_database(self, db_name):
+        if db_name:
+            self.db_name = db_name
+            self.db = sop.connect_db(db_name)
+        else:
+            self.db = None
+    
+    #重設檢查點區域
+    def reset_check_area(self, site_name):
+        self.site = site_name
         #檢查點設定
-        check_area_list = [[30, 412, 133, 477], [545, 422, 636, 477]]
+        check_area_list = self.get_check_area_list()# [[30, 412, 133, 477], [545, 422, 636, 477]]
         self.set_check_area(check_area_list)
 
         #設定檢查點之間的實際距離[ [0 1], [1 0] ]
-        distance_matrix_list = [0, 2.238, 565.107, 0]
+        distance_matrix_list = self.get_distance_matrix()#[0, 2.238, 565.107, 0]
         self.set_distance_matrix(distance_matrix_list)
     
+    #從資料庫獲取 check_area_list
+    def get_check_area_list(self):
+        if self.db == None:
+            return []
+        sql = 'select check_area_list from check_area where site_name="{}"'.format(self.site)
+        results = sop.query_db(self.db, sql) #ex: results = [("30, 412, 133, 477 | 545, 422, 636, 477", )]
+        if not results: #len==0
+            return []
+        results = results[0][0].split('|') # ["30, 412, 133, 477", "545, 422, 636, 477"]
+        check_area_list = []
+        for coord_string in results: # coord_string = "30, 412, 133, 477"
+            coord_list = [int(e) for e in coord_string.split(',')] #ex: e in ["30", "412", "133", "477"]
+            check_area_list.append(coord_list)
+        return check_area_list
+
+    #從資料庫獲取 distance_matrix
+    def get_distance_matrix(self):
+        if self.db == None:
+            return []
+        sql = 'select distance_matrix from check_area where site_name="{}"'.format(self.site)
+        results = sop.query_db(self.db, sql)
+        if not results:
+            return []
+        distance_matrix = [float(e) for e in results[0][0].split(',')]
+        return distance_matrix
+
+
     #設定檢查點區域
     def set_check_area(self, check_area_list):
         self.check_area_list = [] #[ 0:[0, 0, 10, 10] , 1:[20, 20, 30, 30] ]
@@ -39,7 +81,9 @@ class Tracker_manager():
             i += 1
         self.distance_matrix.append(a)
 
-    def input_boxs(self, results, gtime, shape):
+    def input_boxs(self, shape, gtime, site, results):
+        if site != self.site:
+            self.reset_check_area(site)
         #收到新的辨識結果 重置追蹤列表 變為未追蹤狀態
         self.untrack_list, self.tracker_list = self.tracker_list, self.untrack_list
         #評估每一個box 並指派給tracker 同時把追蹤過的tracker放進已追蹤列表

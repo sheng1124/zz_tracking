@@ -17,8 +17,14 @@ import cv2
 import multiprocessing as mp
 
 from utils.peko_utils import tracker
+from utils.peko_utils import sop
 
 USE_CUDA = True
+#要不要用資料庫 不設定->None
+DB_NAME = 'object_tracking'
+IP = '163.25.103.111'
+PORT = 9987
+
 
 #設定 yolo 模型的參數
 def set_args():
@@ -251,6 +257,7 @@ class Post_producer():
         self.recv_size = 4096
 
     def run(self, d_result_queue:mp.Queue, output_queue:mp.Queue):
+        self.track_manager.set_database(DB_NAME)
         try:
             while True:
                 #取得辨識結果
@@ -258,7 +265,7 @@ class Post_producer():
                 #儲存原始影像
                 self.save_raw_image(img, gtime, results) # 5e-3
                 #追蹤 bounding box
-                self.track_manager.input_boxs(results, gtime, img.shape)
+                self.track_manager.input_boxs(img.shape, gtime, self.site, results)
                 #取得所有box的追蹤資訊(by time)
                 tracking_results = self.track_manager.get_tracking_result(gtime) #7e-4
                 #依據追蹤資訊畫圖 標記id 中心點 足跡 寫出有速度資訊的追蹤者並標記追蹤id
@@ -398,7 +405,7 @@ if __name__ == "__main__":
     out_put_queue = mp.Queue(100)
     
     #設定來源，影像會透過這個連近來
-    img_source = Image_source("163.25.103.111", 9987)
+    img_source = Image_source(IP, PORT)
     img_source_mp = mp.Process(target = img_source.run, args = (source_queue, ))
     img_source_mp.start()
 
