@@ -21,7 +21,7 @@ from utils.peko_utils import sop
 
 USE_CUDA = True
 #要不要用資料庫 不設定->None
-DB_NAME = 'object_tracking'
+DB_NAME = 'konpeko'
 IP = '163.25.103.111'
 PORT = 9987
 
@@ -51,13 +51,13 @@ class Detector():
         self.m = m
 
         #設定辨識類別名稱
-        num_classes = m.num_classes
-        if num_classes == 80:
-            namesfile = 'data/coco.names'
-        else:
-            print("no names file")
-        class_names = load_class_names(namesfile)
-        self.class_names = class_names
+        #num_classes = m.num_classes
+        #if num_classes == 80:
+        #    namesfile = 'data/coco.names'
+        #else:
+        #    print("no names file")
+        #class_names = load_class_names(namesfile)
+        #self.class_names = class_names
     
     #辨識圖片
     def detect(self, img):
@@ -93,20 +93,31 @@ class Detector():
 class Monitor():
     def __init__(self) -> None:
         #設定控制
-        pass
+        y, m, d, h, mm, *_ = time.localtime()
+        now_time = "{}-{}-{}T{}-{}".format(y, m, d, h, mm)
+        self.output_folder = os.path.join('data', 'image', 'composite', now_time)
+        os.mkdir(self.output_folder)
 
     def run(self, output_queue:mp.Queue):
         while True:
             #取得影像
-            img = output_queue.get()
+            (img, gtime) = output_queue.get()
             
             #顯示圖片
             self.show_image(img) #0.01 ~ 0.007
+
+            #儲存後製的圖片
+            self.whrite_image(img, gtime)
 
     #顯示圖片
     def show_image(self, img):
         cv2.imshow('holive', img)
         cv2.waitKey(1)
+    
+    #儲存後製的圖片
+    def whrite_image(self, img, gtime):
+        path = os.path.join(self.output_folder, "{}.jpg".format(str(gtime)))
+        cv2.imwrite(path, img)
 
 
     
@@ -281,7 +292,7 @@ class Post_producer():
                 #標註速度資訊(所有tracker 的資訊)
                 self.draw_tracker_list(img, tracker_list) #7e-4
                 #把影像結果傳到輸出佇列
-                output_queue.put(img)
+                output_queue.put((img, gtime))
         except Exception as e:
             import traceback
             traceback.print_exc()

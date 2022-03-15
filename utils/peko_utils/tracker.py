@@ -13,6 +13,8 @@ class Tracker_manager():
         self.distance_matrix = []
         self.used_id = 0
         self.site = ''
+        self.db = None
+        self.table_name = None
         #self.set_database(db_name)
 
     #設定資料庫
@@ -67,6 +69,22 @@ class Tracker_manager():
         for e in check_area_list:
             self.check_area_list.append(e)
 
+    #重製資料庫的 bounding box 表
+    def reset_box_table(self, site):
+        if self.db == None:
+            return
+        table_name = '{}_box'.format(site)
+        try:
+            #測試資料庫有沒有該表
+            sql = 'select * from {} where 0'.format(table_name)
+            sop.execute_sql(self.db, sql)
+        except Exception as e:
+            #沒有資料表 建立資料表
+            print('new box table', table_name)
+            sop.new_box_table(self.db, table_name) 
+        finally:
+            self.table_name = table_name
+
     #設定檢查點之間的距離
     def set_distance_matrix(self, distance_list): # 0 1 1 0, cl = 2
         self.distance_matrix = []
@@ -83,7 +101,10 @@ class Tracker_manager():
 
     def input_boxs(self, shape, gtime, site, results):
         if site != self.site:
+            #場景變更
             self.reset_check_area(site)
+            self.reset_box_table(site)
+            
         #收到新的辨識結果 重置追蹤列表 變為未追蹤狀態
         self.untrack_list, self.tracker_list = self.tracker_list, self.untrack_list
         #評估每一個box 並指派給tracker 同時把追蹤過的tracker放進已追蹤列表

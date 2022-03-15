@@ -18,7 +18,6 @@ def close_db(connection:mysql.connector.connection_cext.CMySQLConnection):
 #查詢資料
 def query_db(connection:mysql.connector.connection_cext.CMySQLConnection, sql:str):
     cursor = connection.cursor()
-    print(type(cursor))
     results = []
     try:
         cursor.execute(sql)
@@ -27,6 +26,15 @@ def query_db(connection:mysql.connector.connection_cext.CMySQLConnection, sql:st
         cursor.close()
     except Exception as e:
         print("查詢資料庫失敗", e)
+    return results
+
+#執行 sql 指令 不例外處理
+def execute_sql(connection:mysql.connector.connection_cext.CMySQLConnection, sql:str):
+    cursor = connection.cursor()
+    cursor.execute(sql)
+    results = cursor.fetchall()
+    connection.commit()
+    cursor.close()
     return results
 
 #取得資料庫版本、目前使用的資料庫
@@ -43,3 +51,16 @@ def all_db_info(connection:mysql.connector.connection_cext.CMySQLConnection):
         print('無法取的資料庫版本')
 
 
+#建立 bounding box 表
+def new_box_table(connection:mysql.connector.connection_cext.CMySQLConnection, table_name):
+    sql = 'CREATE TABLE {} ( `box_id` INT NOT NULL AUTO_INCREMENT , `coordinate` VARCHAR(100) NOT NULL , `time` DATETIME NOT NULL , `gtime` FLOAT NOT NULL , `track_id` INT NOT NULL , PRIMARY KEY (`box_id`)) ENGINE = InnoDB'.format(table_name)
+    cursor = connection.cursor()
+    cursor.execute(sql)
+    connection.commit()
+    cursor.close()
+"""
+conn = connect_db('konpeko')
+new_box_table(conn, 'konpeko', 'tst')
+
+close_db(conn)
+"""
