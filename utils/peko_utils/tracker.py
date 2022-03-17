@@ -3,6 +3,7 @@
 #一個tracker只能指派一個box
 
 import math
+import time
 from utils.peko_utils import sop
 
 class Tracker_manager():
@@ -25,7 +26,7 @@ class Tracker_manager():
         else:
             self.db = None
     
-    #重設檢查點區域
+    #重設檢查點區域 場景重設
     def reset_check_area(self, site_name):
         self.site = site_name
         #檢查點設定
@@ -99,11 +100,23 @@ class Tracker_manager():
             i += 1
         self.distance_matrix.append(a)
 
+    #重設 tracker id 的起始值
+    def reset_used_id(self):
+        print('reset u id')
+        if self.db == None:
+            self.used_id = 0
+        else:
+            self.used_id = sop.query_last_tracker_id(self.db, self.table_name) + 1
+
     def input_boxs(self, shape, gtime, site, results):
         if site != self.site:
             #場景變更
+            for tracker in self.tracker_list:
+                self.insert_tracker_data(tracker)
+            self.untrack_list = []
             self.reset_check_area(site)
             self.reset_box_table(site)
+            self.reset_used_id()
             
         #收到新的辨識結果 重置追蹤列表 變為未追蹤狀態
         self.untrack_list, self.tracker_list = self.tracker_list, self.untrack_list
@@ -122,9 +135,34 @@ class Tracker_manager():
             #tracker 計算目前與上一個box的時間差
             td = tracker.count_time_diff(gtime)
             if td <= 3:
+                #秒數小於的保留
                 self.tracker_list.append(tracker)
+            else:
+                #秒數超過 檢查是否離開(碰到邊界、)
+                #離開把 tracker 插入到資料庫
+                self.insert_tracker_data(tracker)
 
             #離場的刪除 未離場的可以保留(送進以追蹤列表) < 3sec 超過3秒即刪除
+    
+    #把 tracker 的資料新增到資料庫
+    def insert_tracker_data(self, tracker):
+        if self.db == None:
+            return
+        print("tracker", tracker.id, "插入資料庫")
+        #從資料庫取得最新id
+        last_id = tracker.id
+
+        for gtime, coord in tracker.box_list:
+            #將每個box插入到資料庫
+            box_coord = str(coord)[1:-1]
+            dtime = time.strftime("%Y%m%d%H%M%S", time.localtime(gtime))
+            box_data = (0, box_coord, dtime, gtime, last_id, 'data/image/raw/{}/{}.jpg'.format(self.site, gtime))
+            sop.insert_box(self.db, self.table_name, box_data)
+        
+        for datetime, start_time, end_gtime, d, avg_v in tracker.avg_v_list:
+            #將歷史紀錄中每個平均速度插入到資料庫
+            avs_data = (0, last_id, self.site, datetime, start_time, end_gtime, d, avg_v)
+            sop.insert_avg_speed(self.db, avs_data)
         
     #取得所有box的追蹤資訊(by time)
     def get_tracking_result(self, gtime):
@@ -247,6 +285,7 @@ class Tracker():
         self.direct = 0 # 1 右下 2 右上 3 左下 4 左上
         #設定速度
         self.avg_v = 0
+        self.avg_v_list = []
         #資料庫新增id
         self.id = id
         #設定檢查點
@@ -264,9 +303,6 @@ class Tracker():
     #設定檢查點之間的距離矩陣
     def set_distance_matrix(self, distance_matrix):
         self.distance_matrix = distance_matrix
-        print()
-        print(self.distance_matrix)
-        print()
 
     #在哪個檢查點裡面
     def get_checkarea(self, c_center):
@@ -347,40 +383,55 @@ class Tracker():
             return 0.0
         gtime, coord = self.get_last_box()
         avg_v = self.count_avg(gtime, coord)
-        if avg_v:
-            #有計算出平均速度
-            self.avg_v = avg_v
-        return self.avg_v
+        return avg_v
 
     #檢查有沒有在檢查點 有的話計算平均速度
     def count_avg(self, gtime, coord):
-        (t, d, avg) = (0.0, 0.0, 0.0)
+        (t, d, avg_v) = (0.0, 0.0, 0.0)
         #看這個座標有沒有在檢查點裡面
         c_center = self.count_center(coord)
-        check_point_now_id = self.get_checkarea(c_center)
-        #print('track id=',self.id, 'check_point_now:', check_point_now_id)
-        if check_point_now_id != -1 and check_point_now_id != self.check_point.id:
-            #經過新的檢查點，可能是第一次經過，不計算平均速度
-            if self.check_point.id != -1:
-                #有經過上上個檢查點，不是第一次，計算平均速度
-                t = gtime - self.check_point.gtime
-                #真實距離
-                gd = self.distance_matrix[self.check_point.id][check_point_now_id]
-                #像素距離
-                pd = self.distance_matrix[check_point_now_id][self.check_point.id]
-                if self.check_point.id > check_point_now_id:
-                    gd, pd = pd, gd
-                #距離像素比
-                dr = gd / pd
-                d = dr * self.count_abs_pd(c_center, self.check_point.c_center)
-                avg = d/t
+        check_point_new_id = self.get_checkarea(c_center)
+        #print('track id=',self.id, 'check_point_now:', check_point_new_id)
 
-            #檢查點更新 -1 -> 0(第一次) or 1 -> 2(第二次以上)， 紀錄經過檢查點的時間
+        if check_point_new_id == -1 :
+            #沒有經過任何檢查點或沒設定檢查點
+            pass
+
+        elif self.check_point.id == -1:
+            #第一次經過檢查點 更新 -1 -> 0(第一次)
+            self.check_point.reset(check_point_new_id, gtime, c_center)
+        
+        elif check_point_new_id == self.check_point.id:
+            #停留在原本的檢查點 更新時間和座標
+            self.check_point.reset(check_point_new_id, gtime, c_center)
+
+        elif check_point_new_id != self.check_point.id:
+            #經過新的檢查點，不是第一次，計算平均速度
+            t = gtime - self.check_point.gtime
+            #真實距離
+            gd = self.distance_matrix[self.check_point.id][check_point_new_id]
+            #像素距離
+            pd = self.distance_matrix[check_point_new_id][self.check_point.id]
+            if self.check_point.id > check_point_new_id:
+                gd, pd = pd, gd
+            #該場域距離像素比例
+            dr = gd / pd
+            #計算實際距離 = 像素距離*像素比例 單位m
+            d = dr * self.count_abs_pd(c_center, self.check_point.c_center)
+            avg_v = d/t
+
+            #檢查點更新 1 -> 2(第二次以上)， 紀錄經過檢查點的時間
             self.last_check_point.replace(self.check_point)
-            self.check_point.reset(check_point_now_id, gtime, c_center)
-        return avg
+            #新增紀錄(start_time, end_time, move_distance, avg_speed)
+            datetime = time.strftime("%Y%m%d%H%M%S", time.localtime(self.check_point.gtime))
+            self.avg_v_list.append((datetime, self.check_point.gtime, gtime, d, avg_v))
+            self.avg_v = avg_v
+            #更新檢查點
+            self.check_point.reset(check_point_new_id, gtime, c_center)
+
+        return avg_v
     
-    #計算兩點像素絕對距離
+    #計算兩點像素絕對距離單位像素
     def count_abs_pd(self, p1, p2):
         x1, y1 = p1
         x2, y2 = p2

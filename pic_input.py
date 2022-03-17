@@ -44,13 +44,13 @@ if __name__ == '__main__':
     vp.set_source_name(source)
 
     pictures = get_pictures(pic_floder_list)
-    print('ready to send start time = ', time.asctime(time.localtime()))
+    print('ready to send start time = ', time.ctime())
     while True:
         try:
             filepath, ftime = next(pictures)
             vp.send_image_by_path(filepath, ftime)
         except StopIteration:
             endtime = time.time()
-            print('end to send, time = ', time.asctime(time.localtime(endtime)))
+            print('end to send, time = ', time.ctime())
             vp.close()
             break

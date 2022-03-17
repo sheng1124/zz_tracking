@@ -96,7 +96,8 @@ class Monitor():
         y, m, d, h, mm, *_ = time.localtime()
         now_time = "{}-{}-{}T{}-{}".format(y, m, d, h, mm)
         self.output_folder = os.path.join('data', 'image', 'composite', now_time)
-        os.mkdir(self.output_folder)
+        if not os.path.exists(self.output_folder):
+            os.mkdir(self.output_folder)
 
     def run(self, output_queue:mp.Queue):
         while True:
