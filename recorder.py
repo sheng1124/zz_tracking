@@ -4,6 +4,8 @@ import cv2
 import time
 import os
 
+CAMERA_ID = "rtsp://admin:ppcb1234@192.168.154.15:554/unicast/c7/s1/live"
+
 class Camera():
     def __init__(self, cam_id = 0, resolution = None, encode_parm = 100):#resolution = (640, 480)
         #壓縮比例(有損壓縮)
@@ -66,6 +68,6 @@ class Camera():
                 self.reset()
 
 if __name__ == '__main__':
-    cam = Camera("rtsp://admin:ppcb1234@192.168.154.15:554/unicast/c7/s1/live") #640 480
-    cam.record('..')
+    cam = Camera(CAMERA_ID) #640 480
+    cam.record('.')
 
