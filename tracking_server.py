@@ -21,10 +21,18 @@ from utils.peko_utils import sop
 
 USE_CUDA = True
 #要不要用資料庫 不設定->None
-DB_NAME = 'konpeko'
+DB_NAME = None#'konpeko'
+
+#設定IP
+#IP = '163.25.103.111'
 IP = '163.25.103.111'
 PORT = 9987
 
+# 回傳影像
+SEND_IMAGE = True
+
+#顯示影像
+SHOW_IMAGE = False
 
 #設定 yolo 模型的參數
 def set_args():
@@ -99,13 +107,18 @@ class Monitor():
         if not os.path.exists(self.output_folder):
             os.mkdir(self.output_folder)
 
-    def run(self, output_queue:mp.Queue):
+    def run(self, output_queue:mp.Queue, conn_result_queue:mp.Queue):
         while True:
             #取得影像
             (img, gtime) = output_queue.get()
             
             #顯示圖片
-            self.show_image(img) #0.01 ~ 0.007
+            if SHOW_IMAGE:
+                self.show_image(img) #0.01 ~ 0.007
+
+            #回傳影像給來源
+            if SEND_IMAGE and not conn_result_queue.full():
+                conn_result_queue.put((img, gtime))
 
             #儲存後製的圖片
             self.whrite_image(img, gtime)
@@ -146,7 +159,7 @@ class Image_source():
         self.site = None
 
 
-    def run(self, source_queue:mp.Queue):
+    def run(self, source_queue:mp.Queue, result_queue:mp.Queue):
         #聆聽
         self.server.listen(5)
         while True:
@@ -159,7 +172,41 @@ class Image_source():
             self.site = self.get_site()
             print('from', self.site)
 
+            #設定輸出
+            if SEND_IMAGE:
+                return_image = mp.Process(target = self.send_image, args = (result_queue, ))
+                return_image.start()
+
             self.handle(source_queue)
+
+    #回傳辨識影像給來源
+    def send_image(self, result_queue:mp.Queue):
+        def pack_image(img, gtime):
+            #影像壓縮
+            ret, img_encode = cv2.imencode(".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), 100])
+            img_encode_byte = img_encode.tobytes()
+            #取得影像長度並打包
+            img_encode_byte_size = len(img_encode_byte)
+            packed = struct.pack(self.payload, img_encode_byte_size) 
+            #加入時間資訊
+            str_t = str(gtime).split('.')
+            int_t = int(str_t[0])
+            float_t = int(str_t[1])
+            packed += struct.pack(self.payload, int_t) + struct.pack(self.payload, float_t)
+            #傳送給伺服器
+            packed += img_encode_byte
+            return packed
+
+        try:
+            while True:
+                (img, gtime) = result_queue.get()
+                #打包資料
+                packed = pack_image(img, gtime)
+                self.conn.sendall(packed)
+                
+        except Exception as e:
+            #連線已關閉
+            return
 
 
     #取得場域名稱
@@ -379,12 +426,6 @@ class Post_producer():
                 self.draw_text(img, '{:.4} m/s'.format(avg_v), (*mline,))
             mline[1] += td * 2
 
-    #接收辨識結果
-    def get_detect_result(self) -> list:
-        results = self.conn.recv(2048)
-        results = eval(results.decode())
-        return results
-
     #存圖
     def write_image(self, img_type, img, gtime):
         folder = os.path.join("data","image", img_type, self.site)
@@ -413,12 +454,14 @@ if __name__ == "__main__":
     
     #設定來源佇列 和辨識輸出的佇列
     source_queue = mp.Queue(100)
+    conn_result_queue = mp.Queue(100)
     d_result_queue = mp.Queue(100)
     out_put_queue = mp.Queue(100)
+
     
     #設定來源，影像會透過這個連近來
     img_source = Image_source(IP, PORT)
-    img_source_mp = mp.Process(target = img_source.run, args = (source_queue, ))
+    img_source_mp = mp.Process(target = img_source.run, args = (source_queue, conn_result_queue))
     img_source_mp.start()
 
     #設置後製 (追蹤、計算速度、計算人數)
@@ -426,9 +469,9 @@ if __name__ == "__main__":
     pp_mp = mp.Process(target = pp.run, args = (d_result_queue, out_put_queue))
     pp_mp.start()
 
-    #設定影像顯示
+    #設定影像顯示，如何處理後製影像 回傳影像
     mo = Monitor()
-    mo_mp = mp.Process(target = mo.run, args = (out_put_queue, ))
+    mo_mp = mp.Process(target = mo.run, args = (out_put_queue, conn_result_queue))
     mo_mp.start()
 
     print('run yolo')

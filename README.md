@@ -141,7 +141,7 @@
 
 * 啟動資料夾影像來源
     
-    * 執行 zz_tracking/camera_input.py
+    * 執行 zz_tracking/pic_input.py
     
     * 輸入資料夾路徑位置
     

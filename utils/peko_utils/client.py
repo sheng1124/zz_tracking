@@ -100,3 +100,55 @@ class Video_povider_client(Video_client):
         packed += img_encode_byte
         self.remote_server.sendall(packed)
         #print('send time = ', t)
+
+    #接受影像
+    def recive_image(self):
+        #取得/解析影像長度資料
+        img_size, buffer, encode_img_size = self.get_image_len()
+
+        #取得/解析時間
+        (t_int, t_float, buffer, encode_t_int, encode_t_float) = self.get_image_time(buffer)
+        t = float('{}.{}'.format(t_int, t_float))
+
+        #取得壓縮影像資料
+        encode_img = self.get_encode_img(buffer, img_size)
+        image = cv2.imdecode(np.frombuffer(encode_img, dtype = "uint8"), cv2.IMREAD_COLOR)
+
+        return (image, t)
+
+    #取得影像長度資料 ex: 211385
+    def get_image_len(self):
+        buffer = b""
+        while len(buffer) < self.payload_size:
+            #先 recv 固定長度去解析 影像長度資料
+            data = self.remote_server.recv(4096)
+            if data:
+                buffer += data
+        #影像長度資訊是 recv 過來的資料 位置 [0 ~ payload_size] 區段的位元組
+        encode_img_size = buffer[:self.payload_size]
+        #解碼長度資訊
+        img_size = struct.unpack(self.payload, encode_img_size)[0]
+        #清空在 buffer 中的長度資訊 方便後續處理資料
+        buffer = buffer[self.payload_size:]
+        return img_size, buffer, encode_img_size
+
+    #取得影像時間資料 解碼後影像時間格式: ex: 1234.3333 sec
+    def get_image_time(self, buffer):
+        encode_t_int = buffer[:self.payload_size] #取得在buffer中的資料區段
+        t_int = struct.unpack(self.payload, encode_t_int)[0] #解碼
+        buffer = buffer[self.payload_size:] #清空在 buffer 中的資訊 方便後續處理資料
+        encode_t_float = buffer[:self.payload_size]
+        t_float = struct.unpack(self.payload, encode_t_float)[0]
+        buffer = buffer[self.payload_size:]
+        return t_int, t_float, buffer, encode_t_int, encode_t_float
+    
+    #取得壓縮影像
+    def get_encode_img(self, buffer, img_size):
+        #直接要影像長度的資料
+        while len(buffer) < img_size:
+            data = self.remote_server.recv(img_size - len(buffer))
+            if data:
+                buffer += data
+        #擷取、解析壓縮影像資訊
+        encode_img = buffer[:img_size]
+        return encode_img
