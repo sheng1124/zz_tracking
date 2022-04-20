@@ -17,15 +17,16 @@ import cv2
 import multiprocessing as mp
 
 from utils.peko_utils import tracker
+from utils.peko_utils import imged
 from utils.peko_utils import sop
 
 USE_CUDA = True
 #要不要用資料庫 不設定->None
-DB_NAME = None#'konpeko'
+DB_NAME = 'konpeko'
 
 #設定IP
 #IP = '163.25.103.111'
-IP = '163.25.103.111'
+IP = '127.0.0.1'
 PORT = 9987
 
 # 回傳影像
@@ -150,10 +151,8 @@ class Image_source():
         self.server.bind((self.ip, self.port))
         print("Server bind at ",self.ip, self.port)
 
-        #設置影像解碼參數
-        self.payload = ">L"
-        self.payload_size = struct.calcsize(self.payload)
-        self.recv_size = 4096
+        #設置影像編輯
+        self.ie = imged.ImageEd()
         
         #設置地點
         self.site = None
@@ -181,33 +180,40 @@ class Image_source():
 
     #回傳辨識影像給來源
     def send_image(self, result_queue:mp.Queue):
-        def pack_image(img, gtime):
-            #影像壓縮
-            ret, img_encode = cv2.imencode(".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), 100])
-            img_encode_byte = img_encode.tobytes()
-            #取得影像長度並打包
-            img_encode_byte_size = len(img_encode_byte)
-            packed = struct.pack(self.payload, img_encode_byte_size) 
-            #加入時間資訊
-            str_t = str(gtime).split('.')
-            int_t = int(str_t[0])
-            float_t = int(str_t[1])
-            packed += struct.pack(self.payload, int_t) + struct.pack(self.payload, float_t)
-            #傳送給伺服器
-            packed += img_encode_byte
-            return packed
-
         try:
             while True:
                 (img, gtime) = result_queue.get()
                 #打包資料
-                packed = pack_image(img, gtime)
+                packed = self.ie.pack(img, gtime)
                 self.conn.sendall(packed)
                 
         except Exception as e:
             #連線已關閉
             return
+    
+    def handle(self, source_queue:mp.Queue):
+        #設定資源
+        try:
+            while True:
+                #取得時間和 影像
+                #s = time.perf_counter() #測試效能
+                img, gtime = self.get_image() #4e-3 ~ 8e-3
+                #print('input image time', time.perf_counter() - s)
+                while source_queue.full():
+                    #print('source_queue full')
+                    pass
+                source_queue.put((img, gtime, self.site))
 
+        except Exception as e:
+            #關閉連線
+            self.close_conn(e)
+            #raise e
+        print(self.addr, "exit...")
+
+    #取得影像
+    def get_image(self):
+        image, t = self.ie.unpack(self.conn)
+        return (image, t)
 
     #取得場域名稱
     def get_site(self):
@@ -220,88 +226,11 @@ class Image_source():
             print("error in get site name". e)
         return site
 
-    def handle(self, source_queue:mp.Queue):
-        #設定資源
-        try:
-            while True:
-                #取得時間和 影像
-                #s = time.perf_counter() #測試效能
-                img, gtime = self.get_image() #4e-3 ~ 8e-3
-                #e = time.perf_counter()
-                #print('input image time', e - s)
-                #s = e
-                while source_queue.full():
-                    #print('source_queue full')
-                    pass
-                source_queue.put((img, gtime, self.site))
-
-        except Exception as e:
-            #關閉連線
-            self.close_conn(e)
-            #raise e
-        print(self.addr, "exit...")
-    
     #關閉連線
     def close_conn(self, reason):
         self.conn.close()
         print("Client at ", self.addr , " disconnected... for", reason)
     
-    #取得影像
-    def get_image(self):
-        #取得/解析影像長度資料
-        img_size, buffer, encode_img_size = self.get_image_len()
-
-        #取得/解析時間
-        (t_int, t_float, buffer, encode_t_int, encode_t_float) = self.get_image_time(buffer)
-        t = float('{}.{}'.format(t_int, t_float))
-
-        #取得壓縮影像資料
-        encode_img = self.get_encode_img(buffer, img_size)
-        image = cv2.imdecode(np.frombuffer(encode_img, dtype = "uint8"), cv2.IMREAD_COLOR)
-        return (image, t)
-
-
-    #取得影像長度資料 ex: 211385
-    def get_image_len(self):
-        buffer = b""
-        while len(buffer) < self.payload_size:
-            #先 recv 固定長度去解析 影像長度資料
-            data = self.conn.recv(self.recv_size)
-            if data:
-                buffer += data
-            else:
-                raise ConnectionError("no data from video_source")
-        #影像長度資訊是 recv 過來的資料 位置 [0 ~ payload_size] 區段的位元組
-        encode_img_size = buffer[:self.payload_size]
-        #解碼長度資訊
-        img_size = struct.unpack(self.payload, encode_img_size)[0]
-        #清空在 buffer 中的長度資訊 方便後續處理資料
-        buffer = buffer[self.payload_size:]
-        return img_size, buffer, encode_img_size
-    
-    #取得影像時間資料 解碼後影像時間格式: ex: 1234.3333 sec
-    def get_image_time(self, buffer):
-        encode_t_int = buffer[:self.payload_size] #取得在buffer中的資料區段
-        t_int = struct.unpack(self.payload, encode_t_int)[0] #解碼
-        buffer = buffer[self.payload_size:] #清空在 buffer 中的資訊 方便後續處理資料
-        encode_t_float = buffer[:self.payload_size]
-        t_float = struct.unpack(self.payload, encode_t_float)[0]
-        buffer = buffer[self.payload_size:]
-        return t_int, t_float, buffer, encode_t_int, encode_t_float
-    
-    #取得壓縮影像
-    def get_encode_img(self, buffer, img_size):
-        #直接要影像長度的資料
-        while len(buffer) < img_size:
-            data = self.conn.recv(img_size - len(buffer))
-            if data:
-                buffer += data
-            else:
-                raise ConnectionError("no data from video_source")
-        #擷取、解析壓縮影像資訊
-        encode_img = buffer[:img_size]
-        return encode_img
-
 #後處理
 class Post_producer():
     def __init__(self) -> None:
@@ -309,11 +238,6 @@ class Post_producer():
         self.track_manager = tracker.Tracker_manager()
         self.saved_gtime = 0.0
         self.site = None
-
-        #設置影像解碼參數
-        self.payload = ">L"
-        self.payload_size = struct.calcsize(self.payload)
-        self.recv_size = 4096
 
     def run(self, d_result_queue:mp.Queue, output_queue:mp.Queue):
         self.track_manager.set_database(DB_NAME)
@@ -357,7 +281,7 @@ class Post_producer():
 
     #寫文字
     def draw_text(self, img, text, coord):
-        cv2.putText(img, text, coord, cv2.FONT_HERSHEY_SIMPLEX, 0.7, (50, 50, 50), 2)
+        cv2.putText(img, text, coord, cv2.FONT_HERSHEY_SIMPLEX, 0.7, (50, 50, 250), 2)
     
     #畫場景資訊
     def draw_site_inf(self, img, t, count_people):
@@ -409,15 +333,6 @@ class Post_producer():
             avg_v = tracker.get_avg_v()
             #在螢幕的右方標註tracker id 資訊
             self.draw_text(img, 'id : {}'.format(id), (*mline,))
-            mline[1] += td
-            #標註速度
-            self.draw_text(img, 'avg pixel velocity :', (*mline,))
-            mline[1] += td
-            self.draw_text(img, '{:.4}, {:.4}'.format(*pav), (*mline,))
-            mline[1] += td
-            self.draw_text(img, 'instance pixel velocity :', (*mline,))
-            mline[1] += td
-            self.draw_text(img, '{:.4}, {:.4}'.format(*piv), (*mline,))
             mline[1] += td
             #標註平均速率
             if avg_v > 0:

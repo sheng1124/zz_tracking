@@ -1,9 +1,14 @@
 import time
 import os
 
-from utils.peko_utils.client import Video_povider_client
+from utils.peko_utils.client import VideoClient
+from camera_input import recive, show_image
 import multiprocessing as mp
 import cv2
+import numpy as np
+
+IP = '127.0.0.1'#'163.25.103.111'
+PORT = 9987
 
 #取得資料夾列表
 def get_pic_floder_list():
@@ -34,9 +39,9 @@ def get_pictures(pic_floder_list, send_interval=1):
             i+=1
 
 #傳輸影像
-def send(recive_queue, source, pic_floder_list):    
+def send(recive_queue:mp.Queue, source, pic_floder_list, shutdown:mp.Queue):    
     #設定連接到伺服器
-    vp = Video_povider_client('163.25.103.111', 9987)
+    vp = VideoClient(IP, PORT)
     vp.connect()
     vp.set_source_name(source)
     
@@ -56,23 +61,15 @@ def send(recive_queue, source, pic_floder_list):
         except StopIteration:
             #已傳送所有圖片 輸出結束時間 endtime = time.time()
             print('end to send, time = ', time.ctime())
-            vp.close()
             break
-
-#從伺服器取得
-def recive(vp:Video_povider_client, recive_queue:mp.Queue):
-    while True:
-        image, gtime = vp.recive_image()
-        #影像放到共享記憶體讓主執行緒存取並顯示
-        recive_queue.put((image, gtime))
-
-#顯示影像
-def show(recive_queue:mp.Queue):
-    while True:
-        image, gtime = recive_queue.get()
-        cv2.imshow('holive', image)
-        cv2.waitKey(1)
-
+    
+    #關閉連練
+    while shutdown.empty():
+        time.sleep(1)
+    r.terminate()
+    vp.close()
+    r.join()
+    print('close connection')
 
 if __name__ == '__main__':
     #"rtsp://admin:ppcb1234@192.168.154.15:554/unicast/c7/s1/live") #640 480
@@ -83,13 +80,22 @@ if __name__ == '__main__':
 
     #設定伺服器傳送資料的佇列
     recive_queue = mp.Queue(100)
+    #控制
+    shutdown = mp.Queue(5)
     
     #多工處裡 子執行緒傳送/接受資料給伺服器 主執行緒顯示影像
-    s = mp.Process(target = send, args = (recive_queue, source, pic_floder_list))
+    s = mp.Process(target = send, args = (recive_queue, source, pic_floder_list, shutdown))
     s.start()
 
+    #布告欄
+    bulletin = np.zeros((480,640,3), dtype='uint8')
+
     #顯示影像
-    while True:
-        image, gtime = recive_queue.get()
-        cv2.imshow('holive', image)
-        cv2.waitKey(1)
+    try:
+        show_image(recive_queue, shutdown, bulletin)
+    except Exception as e:
+        shutdown.put(1)
+        print(e)
+    
+    cv2.destroyAllWindows()
+
