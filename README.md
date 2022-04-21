@@ -240,7 +240,7 @@
         
 * 行人追蹤移動足跡
     * 製作軌跡圖
-       ![](https://imgur.com/Y1SG5ql.gif)
+       ![](https://github.com/sheng1124/zz_tracking/blob/main/data/gif/demo.gif)
     
 
 
