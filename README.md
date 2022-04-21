@@ -1,5 +1,14 @@
 # zz_tracking
-* 人工智慧應用於行人影像虛實整合系統
+## 專案說明
+
+* 人工智慧應用於即時行人影像虛實整合系統
+    * 行人追蹤 並顯示足跡
+    * 計算人數
+    * 計算平均速度 
+    * 行人影像消除/遮蔽
+    * 虛擬背景合成
+    * 虛擬物件互動(移動背景)
+    * 視訊多人合成
 
 # 安裝
 ## 硬體環境
@@ -59,6 +68,10 @@
 * 安裝 mysql
     
     ```pip install mysql-connector-python```
+
+* imageio
+    
+    ```pip install imageio```
 
 ## YOLOv4 設定
 
@@ -129,17 +142,17 @@
 
 ## 操作說明
 
-* 啟動系統
+* 啟動系統(伺服器端)
 
     * 執行 zz_tracking/tracking_server.py
 
-* 啟動攝影機端影像來源
+* 啟動攝影機端影像來源(使用者端)
     
     * 執行 zz_tracking/camera_input.py
     
     * 輸入場域名稱
 
-* 啟動資料夾影像來源
+* 啟動資料夾影像來源(使用者端)
     
     * 執行 zz_tracking/pic_input.py
     
@@ -149,7 +162,7 @@
     
     * 可更改傳送比率，若需要節省數據傳輸，可調低傳送比率，ex: 辨識到有人的影像就紀錄影像時間，再從那個時間去反推附近的時間，在從那個時間點抓全部的影像
 
-## 設定說明
+## 伺服器設定說明
 
 * 更改 IP
 
@@ -159,8 +172,14 @@
     
     * 修改 zz_tracking/tracking_server.py 的 DB_NAME 參數
     
-    * 若不用資料庫修設為 None type
+    * 若不用資料庫修設為 None
 
+* 回傳辨識後的影像給客戶端
+    
+    * SEND_IMAGE = True
+
+* 顯示影像
+    * SHOW_IMAGE = False
 
 ## 輔助工具操作說明
 
@@ -188,6 +207,11 @@
 * 影片截圖(video to images)
 
 * 影片合成(images to video)
+    * 目的: 圖片合成影片
+    * zz_tracking/imgs2gif.py
+        * 圖片變gif
+        * 輸入資料夾 圖片檔名必須為 秒數名稱.jpg
+        * 輸出在 data/gif/目前時間.gif
 
 * 複製特定秒數的影像到新的資料夾
     
@@ -207,3 +231,16 @@
 # 系統說明
 
 ## 功能
+* 計算平均速度
+    * 偵測到行人從 A 區走到 B 區會計算平均速度並把速度顯示在右側資訊欄上
+        ![](https://i.imgur.com/g6bzDJs.jpg)
+    * 平均速度的結果會存到資料庫中
+        ![](https://i.imgur.com/COl5NjH.png)
+    * 行人離開 3 秒停止追蹤即不會顯示資訊在螢幕上
+        
+* 行人追蹤移動足跡
+    * 製作軌跡圖
+       ![](https://imgur.com/Y1SG5ql.gif)
+    
+
+
