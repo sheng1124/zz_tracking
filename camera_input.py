@@ -5,7 +5,7 @@ import time
 import multiprocessing as mp
 import numpy as np
 
-IP = '127.0.0.1'
+IP = '172.20.10.9' #
 PORT = 9987
 
 #傳輸影像
@@ -50,7 +50,7 @@ def show_image(recive_queue:mp.Queue, shutdown:mp.Queue, bulletin):
         except Exception as e:
             #超時佇列是空的
             image = bulletin
-
+            
         cv2.imshow('holive', image)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             shutdown.put(1)

@@ -22,11 +22,11 @@ from utils.peko_utils import sop
 
 USE_CUDA = True
 #要不要用資料庫 不設定->None
-DB_NAME = 'konpeko'
+DB_NAME = None#'konpeko'
 
 #設定IP
 #IP = '163.25.103.111'
-IP = '127.0.0.1'
+IP = '172.20.10.9' #'localhost' #'163.25.103.111' #網域名稱 -> IP
 PORT = 9987
 
 # 回傳影像
@@ -54,6 +54,7 @@ class Detector():
         m = Darknet(cfgfile)
         #m.print_network()
         #載入權重
+        
         m.load_weights(weightfile)
         if USE_CUDA:
             m.cuda()
@@ -366,7 +367,7 @@ if __name__ == "__main__":
     #設定辨識模組
     args = set_args()
     yolo4 = Detector(args.cfgfile, args.weightfile)
-    
+
     #設定來源佇列 和辨識輸出的佇列
     source_queue = mp.Queue(100)
     conn_result_queue = mp.Queue(100)

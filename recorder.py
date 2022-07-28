@@ -4,7 +4,7 @@ import cv2
 import time
 import os
 
-CAMERA_ID = "rtsp://admin:ppcb1234@192.168.154.15:554/unicast/c7/s1/live"
+CAMERA_ID = 0 #"rtsp://admin:ppcb1234@192.168.154.15:554/unicast/c7/s1/live"
 
 class Camera():
     def __init__(self, cam_id = 0, resolution = None, encode_parm = 100):#resolution = (640, 480)
@@ -16,6 +16,7 @@ class Camera():
         #設定解析度 有的要設定有的不用 預設不用設解析度
         self.resolution = resolution
         self.set_resolution()
+        self.pretime = 0
         
     #設定解析度
     def set_resolution(self):
@@ -33,14 +34,14 @@ class Camera():
             print(e)
 
     #截圖
-    def record(self, outputpath):
+    def record(self, outputpath, fps):
         while True:
             try:
                 #讀取影像
                 *_, img = self.cam.read()
                 
                 #設定時間
-                twtime = time.time() + 28800
+                twtime = time.time()
                 twlocaltime = time.localtime(twtime)
                 localtime = time.asctime(twlocaltime)
                 
@@ -57,10 +58,13 @@ class Camera():
                     localtime[8:10],
                     localtime[11:13])
                 dirpath = os.path.join(outputpath, 'record', dirpath)
+
                 if not os.path.isdir(dirpath):
                     os.makedirs(dirpath)
                 filepath = os.path.join(dirpath, str(twtime) + '.jpg')
-                cv2.imwrite(filepath, img)
+                if fps > 0 and twtime - self.pretime > 1/(fps+1):
+                    cv2.imwrite(filepath, img)
+                    self.pretime = twtime
 
             except Exception as e:
                 print(e)
@@ -69,5 +73,6 @@ class Camera():
 
 if __name__ == '__main__':
     cam = Camera(CAMERA_ID) #640 480
-    cam.record('.')
+    cam.record('./recode', 3)
+    
 
