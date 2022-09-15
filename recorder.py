@@ -48,7 +48,7 @@ class Camera():
                 #不允許的時間範圍 continue
                 hour = int(localtime[11:13])
                 week = localtime[0:3]
-                if not (7 < hour < 20) or week in ('Sat', 'Sun'):
+                if not (7 < hour < 23) or week in ('Sat', 'Sun'):
                     continue
 
                 #用時間設定檔案夾名稱 年-月-日-小時

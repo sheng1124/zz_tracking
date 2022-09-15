@@ -3,6 +3,7 @@
 #一個tracker只能指派一個box
 
 import math
+import numpy as np
 import time
 from utils.peko_utils import sop
 
@@ -40,7 +41,7 @@ class Tracker_manager():
     #從資料庫獲取 check_area_list
     def get_check_area_list(self):
         if self.db == None:
-            return []
+            return [] # [[30, 412, 133, 477] [545, 422, 636, 477]]
         sql = 'select check_area_list from check_area where site_name="{}"'.format(self.site)
         results = sop.query_db(self.db, sql) #ex: results = [("30, 412, 133, 477 | 545, 422, 636, 477", )]
         if not results: #len==0
@@ -111,12 +112,12 @@ class Tracker_manager():
     def input_boxs(self, shape, gtime, site, results):
         if site != self.site:
             #場景變更
-            for tracker in self.tracker_list:
-                self.insert_tracker_data(tracker)
+            self.insert_all_tracker()
             self.untrack_list = []
             self.reset_check_area(site)
             self.reset_box_table(site)
             self.reset_used_id()
+            
             
         #收到新的辨識結果 重置追蹤列表 變為未追蹤狀態
         self.untrack_list, self.tracker_list = self.tracker_list, self.untrack_list
@@ -144,6 +145,11 @@ class Tracker_manager():
 
             #離場的刪除 未離場的可以保留(送進以追蹤列表) < 3sec 超過3秒即刪除
     
+    #儲存所有tracker至資料庫
+    def insert_all_tracker(self):
+        for tracker in self.tracker_list:
+                self.insert_tracker_data(tracker)
+
     #把 tracker 的資料新增到資料庫
     def insert_tracker_data(self, tracker):
         if self.db == None:
@@ -152,7 +158,7 @@ class Tracker_manager():
         #從資料庫取得最新id
         last_id = tracker.id
 
-        for gtime, coord in tracker.box_list:
+        for gtime, coord, vector in tracker.box_list:
             #將每個box插入到資料庫
             box_coord = str(coord)[1:-1]
             dtime = time.strftime("%Y%m%d%H%M%S", time.localtime(gtime))
@@ -283,6 +289,9 @@ class Tracker():
     def __init__(self, id) -> None:
         self.box_list = []
         self.direct = 0 # 1 右下 2 右上 3 左下 4 左上
+        #顏色
+        self.color = (np.random.rand(3)*255).astype('uint8').tolist()
+        self.color = (self.color[0], self.color[1],self.color[2])
         #設定速度
         self.avg_v = 0
         self.avg_v_list = []
@@ -317,7 +326,7 @@ class Tracker():
 
     #取得某個時間點的box
     def get_result_box(self, gtime):
-        for ctime, coord in self.box_list[::-1]:
+        for ctime, coord, vector in self.box_list[::-1]:
             if ctime == gtime:
                 return [self.id, coord]
             elif ctime < gtime:
@@ -338,7 +347,7 @@ class Tracker():
     #取得 bndbox 列表
     def get_box_list(self): #->[id, box_list]
         box_list = []
-        for ctime, coord in self.box_list:
+        for ctime, coord, vector in self.box_list:
             box_list.append(coord)
         return [self.id, box_list]
 
@@ -351,9 +360,9 @@ class Tracker():
     def count_speed(self, index1, index2):
         try:
             #取得最新的有紀錄到 tracker 的時間
-            ctime, ccoord = self.box_list[index2]
+            ctime, ccoord, *_ = self.box_list[index2]
             #取得上一個有記錄到 tracker 的時間
-            ptime, pcoord = self.box_list[index1]
+            ptime, pcoord, *_ = self.box_list[index1]
         except IndexError:
             return (0.0, 0.0)
         #計算絕對距離 時間差
@@ -381,7 +390,7 @@ class Tracker():
     def get_avg_v(self):
         if len(self.check_area_list) < 2:
             return 0.0
-        gtime, coord = self.get_last_box()
+        gtime, coord, vector = self.get_last_box()
         avg_v = self.count_avg(gtime, coord)
         return avg_v
 
@@ -439,23 +448,83 @@ class Tracker():
         dy = y2 - y1
         return math.sqrt(dx * dx + dy * dy)
 
-    #儲存框,足跡,速度
+    #儲存框,足跡,速度 方向
     def set_box(self, coord, gtime):
-        self.box_list.append([gtime, coord])
+        if len(self.box_list) > 0:
+            last_time, last_coord, *_ = self.get_last_box()
+            vector = self.count_vector(coord, last_coord)
+        else:
+            #起點框沒有方向
+            vector = (0,0)
+        #print(gtime, coord, vector)
+        self.box_list.append([gtime, coord, vector])
+
+    #計算方向向量
+    def count_vector(self, cA, cB):
+        Ax1, Ay1 = self.count_center(cA)
+        Bx1, By1 = self.count_center(cB)
+        vx, vy = (Ax1 - Bx1, Ay1 - By1)
+        vector = (vx, vy)
+        #if (vx , vy) == (0,0):
+        #    vector = (0,0)
+        #else:
+        #    vector = (Ax1 - Bx1, Ay1 - By1)/np.linalg.norm([Ax1 - Bx1, Ay1 - By1])
+        return vector
+
+    #計算IoU
+    def count_iou(self, cA, cB):
+        Ax1, Ay1, Ax2, Ay2 = cA
+        Bx1, By1, Bx2, By2 = cB
+
+        #計算 cA cB 交集矩形面積 
+        ox1, oy1 = max(Ax1, Bx1), max(Ay1, By1)
+        ox2, oy2 = min(Ax2, Bx2), min(Ay2, By2)
+        #面積 = 最小重疊矩型面積長*寬
+        overlap = max(0, ox2 - ox1 + 1) * max(0, oy2 - oy1 + 1)
+
+        #計算 cA cB 聯集面積 = cA 面積 + cB面積 - 交集面積 
+        avg_w = ((Ax2 - Ax1 + 1) + (Bx2 - Bx1 + 1))/2
+        A = avg_w * (Ay2 - Ay1 + 1)
+        B = avg_w * (By2 - By1 + 1)
+        union = A + B - overlap
+
+        #iou = 交集面積/聯集面積
+        iou = overlap/union
+        return iou
+
+    #計算向量角度
+    def count_angle(self, v1, v2):
+        if (v1[0]//10, v1[1]//10, v2[0]//10, v2[1]//10) == (0,0,0,0):
+            #兩者皆靜止狀態
+            return 1.0
+        elif (v1[0]//10, v1[1]//10)  == (0,0) or (v2[0]//10, v2[1]//10)  == (0,0):
+            #靜止狀態開始移動
+            return 0.5
+        else:
+            #兩者移動方向一樣
+            a, b = np.array(v1), np.array(v2)
+            angle = a.dot(b)/(np.linalg.norm(a) * np.linalg.norm(b)) 
+        return angle
 
     #與上一個框比較 計算新方向 回傳給管理者評估要不要指派框 
     def campare_coord(self, coord, gtime):
-        last_time, last_coord = self.get_last_box()
+        last_time, last_coord, vector = self.get_last_box()
         ld = coord[0] - last_coord[0] #x1 - x1
         rd = coord[2] - last_coord[2] #x2 - x2
         ud = coord[1] - last_coord[1] #y1 - y1
         dd = coord[3] - last_coord[3] #y2 - y2
+        
+        iou = self.count_iou(last_coord, coord)
+        new_vector = self.count_vector(coord, last_coord)
+        
+        print(gtime, self.id, f'{iou:.3f} {self.count_angle(vector, new_vector)}', )# f'{new_vector[0] - vector[0]}, {new_vector[1] - vector[1]}') #, f'{new_vector[0]}, {new_vector[1]}')
         td = gtime - last_time
+
         return [abs(ld), abs(ud), abs(rd), abs(dd), td]
 
     #計算目前與上一個box的時間差
     def count_time_diff(self, gtime):
-        last_time, last_coord = self.get_last_box()
+        last_time, *_ = self.get_last_box()
         return gtime - last_time
 
     #位置相近時間差距大 > 2sec

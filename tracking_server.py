@@ -22,11 +22,11 @@ from utils.peko_utils import sop
 
 USE_CUDA = True
 #要不要用資料庫 不設定->None
-DB_NAME = None#'konpeko'
+DB_NAME = 'konpeko' #None#'konpeko'
 
 #設定IP
 #IP = '163.25.103.111'
-IP = '172.20.10.9' #'localhost' #'163.25.103.111' #網域名稱 -> IP
+IP = '163.25.103.111' #'localhost' #'163.25.103.111' #網域名稱 -> IP
 PORT = 9987
 
 # 回傳影像
@@ -38,7 +38,7 @@ SHOW_IMAGE = False
 #設定 yolo 模型的參數
 def set_args():
     parser = argparse.ArgumentParser('Test your image or video by trained model.')
-    parser.add_argument('-cfgfile', type=str, default='data/cfg/yolov4.cfg',
+    parser.add_argument('-cfgfile', type=str, default='data/cfg/yolov4_fish.cfg',
                         help='path of cfg file', dest='cfgfile')
     parser.add_argument('-weightfile', type=str,
                         default='data/weights/yolov4.weights',
@@ -54,7 +54,7 @@ class Detector():
         m = Darknet(cfgfile)
         #m.print_network()
         #載入權重
-        
+
         m.load_weights(weightfile)
         if USE_CUDA:
             m.cuda()
@@ -72,6 +72,8 @@ class Detector():
     #辨識圖片
     def detect(self, img):
         sized = cv2.resize(img, (self.m.width, self.m.height)) # size 608 * 608 3e-4 sec
+        print(sized.shape) #None
+        
         sized = cv2.cvtColor(sized, cv2.COLOR_BGR2RGB) #4e-4 sec
         boxes = do_detect(self.m, sized, 0.4, 0.6, USE_CUDA) #5e-2 sec
         return boxes
@@ -245,17 +247,18 @@ class Post_producer():
         try:
             while True:
                 #取得辨識結果
-                (img, gtime, self.site, results) = d_result_queue.get()
+                (img, gtime, site, results) = d_result_queue.get()
+                self.site = site
                 #儲存原始影像
                 self.save_raw_image(img, gtime, results) # 5e-3
                 #追蹤 bounding box
                 self.track_manager.input_boxs(img.shape, gtime, self.site, results)
                 #取得所有box的追蹤資訊(by time)
                 tracking_results = self.track_manager.get_tracking_result(gtime) #7e-4
-                #依據追蹤資訊畫圖 標記id 中心點 足跡 寫出有速度資訊的追蹤者並標記追蹤id
-                self.draw_frame(img, tracking_results) #5e-4
                 #取得追蹤清單
                 tracker_list = self.track_manager.get_tracker_list()
+                #依據追蹤資訊畫圖 標記id 中心點 足跡 寫出有速度資訊的追蹤者並標記追蹤id
+                self.draw_frame(img, tracker_list, tracking_results) #5e-4
                 #標註場景資訊 標註人數
                 self.draw_site_inf(img, gtime, len(tracker_list))
                 #標註檢查點
@@ -267,22 +270,31 @@ class Post_producer():
                 #把影像結果傳到輸出佇列
                 output_queue.put((img, gtime))
         except Exception as e:
-            import traceback
-            traceback.print_exc()
-            print(e)
+            self.track_manager.insert_all_tracker()
+            #import traceback
+            #traceback.print_exc()
+            #print(e)
 
 
     #畫人框
-    def draw_frame(self, img, results):
-        #results = [[id, coord, ...], ]
+    def draw_frame(self, img, tracker_list, results):
+        for tracker in tracker_list:
+            #取的tracker取得最新的box
+            id = tracker.id
+            gtime, coord, vector = tracker.get_last_box()
+            color = tracker.color
+            (x1, y1, x2, y2) = coord
+            cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
+            cv2.putText(img, str(id) , (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, color, 2)
+        
+        #畫偵測到的框
         for id, coord in results:
             (x1, y1, x2, y2) = coord
-            cv2.rectangle(img, (x1, y1), (x2, y2), (255, 0, 0), 2)
-            cv2.putText(img, str(id) , (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255,0,0), 2)
+            cv2.rectangle(img, (x1+3, y1+3), (x2, y2), (0, 0, 255), 2)
 
     #寫文字
-    def draw_text(self, img, text, coord):
-        cv2.putText(img, text, coord, cv2.FONT_HERSHEY_SIMPLEX, 0.7, (50, 50, 250), 2)
+    def draw_text(self, img, text, coord, color = (50, 50, 250)):
+        cv2.putText(img, text, coord, cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
     
     #畫場景資訊
     def draw_site_inf(self, img, t, count_people):
@@ -302,6 +314,7 @@ class Post_producer():
 
     #打點
     def draw_dot(self, img, tracker_list):
+        #return
         for tracker in tracker_list:
             #取的tracker過去所有足跡
             id, box_list = tracker.get_box_list()
@@ -322,7 +335,7 @@ class Post_producer():
     #標註 tracker list 資訊
     def draw_tracker_list(self, img, track_list):
         (h, w, *_) = img.shape # h 1080 w 1920
-        mline = [int(w * 0.623), int(h * 0.141)] #標註資訊位置(cv2畫筆位置)
+        mline = [int(w * 0.623), int(h * 0.047)] #標註資訊位置(cv2畫筆位置)
         td = int(h * 0.047) #行距
         for tracker in track_list:
             id = tracker.id
@@ -333,14 +346,14 @@ class Post_producer():
             #平均速率(總距離 / 總時間)
             avg_v = tracker.get_avg_v()
             #在螢幕的右方標註tracker id 資訊
-            self.draw_text(img, 'id : {}'.format(id), (*mline,))
+            self.draw_text(img, 'id : {}'.format(id), (*mline,), tracker.color)
             mline[1] += td
             #標註平均速率
             if avg_v > 0:
-                self.draw_text(img, 'average speed :', (*mline,))
+                self.draw_text(img, 'average speed :', (*mline,), tracker.color)
                 mline[1] += td
-                self.draw_text(img, '{:.4} m/s'.format(avg_v), (*mline,))
-            mline[1] += td * 2
+                self.draw_text(img, '{:.4} m/s'.format(avg_v), (*mline,), tracker.color)
+                mline[1] += td * 2
 
     #存圖
     def write_image(self, img_type, img, gtime):

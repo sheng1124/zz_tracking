@@ -7,7 +7,7 @@ import multiprocessing as mp
 import cv2
 import numpy as np
 
-IP = '127.0.0.1'#'163.25.103.111'
+IP = '163.25.103.111'#'163.25.103.111'
 PORT = 9987
 
 #取得資料夾列表
@@ -61,13 +61,13 @@ def send(recive_queue:mp.Queue, source, pic_floder_list, shutdown:mp.Queue):
         except StopIteration:
             #已傳送所有圖片 輸出結束時間 endtime = time.time()
             print('end to send, time = ', time.ctime())
+            vp.close()
             break
     
     #關閉連練
     while shutdown.empty():
         time.sleep(1)
     r.terminate()
-    vp.close()
     r.join()
     print('close connection')
 

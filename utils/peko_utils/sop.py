@@ -98,6 +98,6 @@ if __name__ == '__main__':
     print(id)
 
     d = (0, 10, 'cgu', '20220304135717', 1646373437.910015, 1646373438.7266257, 1.712508672714728, 2.0970934319545296)
-    insert_avg_speed(0)
+    insert_avg_speed(conn,d)
 
     close_db(conn)
