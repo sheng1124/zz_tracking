@@ -9,6 +9,8 @@
     * 虛擬背景合成
     * 虛擬物件互動(移動背景)
     * 視訊多人合成
+* demo
+   * ![](https://github.com/sheng1124/zz_tracking/blob/main/data/image/gif/averagespeed.gif)
 
 # 安裝
 ## 硬體環境
